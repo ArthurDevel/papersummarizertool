@@ -20,12 +20,13 @@ class OpenRouterService:
                 "Authorization": f"Bearer {self.api_key}",
                 "Content-Type": "application/json"
             },
-            timeout=120  # Generous timeout for model generation
+            timeout=300  # Increased timeout for potentially long image processing
         )
 
-    async def get_llm_response(self, messages: List[Dict[str, str]], model: str) -> Dict[str, Any]:
+    async def get_llm_response(self, messages: List[Dict[str, Any]], model: str) -> Dict[str, Any]:
         """
         Gets a response from a specified LLM on OpenRouter with a given prompt.
+        Supports both text-only and multimodal messages.
         """
         json_payload = {
             "model": model,
@@ -42,6 +43,37 @@ class OpenRouterService:
         except (KeyError, IndexError) as e:
             logger.error(f"Error parsing OpenRouter response: {e}")
             logger.error(f"Response body: {response.text}")
+            raise
+
+    async def get_multimodal_json_response(self, system_prompt: str, user_prompt_parts: List[Dict[str, Any]], model: str) -> Dict[str, Any]:
+        """
+        Gets a structured JSON response from a specified multimodal LLM on OpenRouter.
+        """
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt_parts},
+        ]
+        json_payload = {
+            "model": model,
+            "messages": messages,
+            "response_format": {"type": "json_object"},
+        }
+        try:
+            response = await self.client.post("/chat/completions", json=json_payload)
+            response.raise_for_status()
+            data = response.json()
+            # The actual JSON content is in the 'content' field of the first choice's message
+            json_content = data.get("choices", [{}])[0].get("message", {}).get("content", "{}")
+            return json.loads(json_content)
+        except httpx.HTTPStatusError as e:
+            logger.error(f"HTTPStatusError calling OpenRouter for JSON response: {e}")
+            logger.error(f"Request body: {json.dumps(json_payload, indent=2)}")
+            logger.error(f"Response body: {e.response.text}")
+            raise
+        except (KeyError, IndexError, json.JSONDecodeError) as e:
+            logger.error(f"Error parsing JSON from OpenRouter response: {e}")
+            if 'response' in locals() and hasattr(response, 'text'):
+                 logger.error(f"Response body: {response.text}")
             raise
 
     async def get_json_response(self, system_prompt: str, user_prompt: str, model: str) -> Dict[str, Any]:

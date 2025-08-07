@@ -5,6 +5,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        - CONTAINERPORT_API=${CONTAINERPORT_API:-8000}
     env_file:
       - .env
     ports:

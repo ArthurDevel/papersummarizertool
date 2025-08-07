@@ -1,6 +1,10 @@
+ARG CONTAINERPORT_API
 # Stage 1: Build the Next.js frontend
 FROM node:18-alpine AS frontend-builder
 WORKDIR /app/frontend
+
+ARG CONTAINERPORT_API
+ENV NEXT_PUBLIC_CONTAINERPORT_API=$CONTAINERPORT_API
 
 COPY frontend/package*.json ./
 RUN npm install

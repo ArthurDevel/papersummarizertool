@@ -1,0 +1,228 @@
+"use client";
+
+import { useState, useRef } from 'react';
+import { processPaper, getJobStatus } from '../../services/api';
+import { Paper, Section, Figure, Table } from '../../types/paper';
+import { ChevronDown, Loader, UploadCloud, FileText } from 'lucide-react';
+
+export default function QuickTestPage() {
+  const [file, setFile] = useState<File | null>(null);
+  const [paperData, setPaperData] = useState<Paper | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [openSection, setOpenSection] = useState<string | null>(null);
+
+  const pollingInterval = useRef<NodeJS.Timeout | null>(null);
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (event.target.files) {
+      setFile(event.target.files[0]);
+    }
+  };
+  
+  const cleanupPolling = () => {
+    if (pollingInterval.current) {
+      clearInterval(pollingInterval.current);
+      pollingInterval.current = null;
+    }
+  };
+
+  const pollJobStatus = async (id: string) => {
+    try {
+      const data = await getJobStatus(id);
+      if (data) {
+        setPaperData(data);
+        setIsLoading(false);
+        setJobId(null);
+        setError(null);
+        setOpenSection("Summary"); // Open the first section by default
+        cleanupPolling();
+      }
+    } catch (err) {
+      console.error("Error polling for job status:", err);
+      setError(err instanceof Error ? err.message : "An unknown error occurred during polling.");
+      setIsLoading(false);
+      setJobId(null);
+      cleanupPolling();
+    }
+  };
+
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!file) {
+      alert("Please select a file first.");
+      return;
+    }
+
+    setIsLoading(true);
+    setPaperData(null);
+    setJobId(null);
+    setError(null);
+    cleanupPolling();
+
+    try {
+      const initialResponse = await processPaper(file);
+      setJobId(initialResponse.job_id);
+      pollingInterval.current = setInterval(() => {
+        pollJobStatus(initialResponse.job_id);
+      }, 3000);
+    } catch (err) {
+      console.error("Error uploading file:", err);
+      setError(err instanceof Error ? err.message : "An unknown error occurred.");
+      setIsLoading(false);
+    }
+  };
+
+  const toggleSection = (section: string) => {
+    setOpenSection(openSection === section ? null : section);
+  };
+  
+  const renderRewrittenSectionContent = (section: Section) => (
+    <div key={section.section_title} className="prose dark:prose-invert max-w-none mb-6 last:mb-0">
+      <h4 className="font-semibold">{section.section_title} (p. {section.start_page}-{section.end_page})</h4>
+      {section.rewritten_content ? (
+         <div className="mt-2 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-md text-gray-800 dark:text-gray-300" style={{ whiteSpace: 'pre-line' }}>
+          {section.rewritten_content}
+        </div>
+      ) : (
+         section.level > 1 && <p className="text-sm italic text-gray-500 dark:text-gray-400 mt-2">Content not rewritten for this subsection.</p>
+      )}
+      {section.subsections && section.subsections.length > 0 && (
+        <div className="ml-6 mt-4 pl-4 border-l-2 border-gray-200 dark:border-gray-700 space-y-6">
+          {section.subsections.map(sub => renderRewrittenSectionContent(sub))}
+        </div>
+      )}
+    </div>
+  );
+
+  const AccordionSection = ({ title, children }: { title: string; children: React.ReactNode }) => {
+    const isOpen = openSection === title;
+    return (
+      <div
+        className={`border rounded-lg bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 transition-all duration-300 ease-in-out ${
+          isOpen ? "flex-grow flex flex-col" : "flex-shrink-0"
+        }`}
+      >
+        <button
+          onClick={() => toggleSection(title)}
+          className="w-full text-left p-4 font-semibold flex justify-between items-center"
+        >
+          <span>{title}</span>
+          <ChevronDown
+            className={`transform transition-transform duration-200 ${
+              isOpen ? "rotate-180" : ""
+            }`}
+          />
+        </button>
+        {isOpen && (
+          <div className="p-4 border-t border-gray-200 dark:border-gray-700 flex-grow overflow-hidden">
+            {children}
+          </div>
+        )}
+      </div>
+    );
+  };
+  
+  return (
+    <div className="flex h-screen bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
+      {/* Sidebar */}
+      <aside className="w-1/4 bg-gray-800 text-white p-6 overflow-y-auto">
+        <h2 className="text-2xl font-bold mb-6">Paper Upload</h2>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label htmlFor="pdf-upload" className="block text-sm font-medium mb-2">
+              Upload PDF
+            </label>
+            <div className="flex items-center justify-center w-full">
+                <label htmlFor="pdf-upload" className="flex flex-col items-center justify-center w-full h-32 border-2 border-gray-500 border-dashed rounded-lg cursor-pointer bg-gray-700 hover:bg-gray-600">
+                    <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                        <UploadCloud className="w-8 h-8 mb-2 text-gray-400" />
+                        <p className="mb-1 text-sm text-gray-400"><span className="font-semibold">Click to upload</span></p>
+                        <p className="text-xs text-gray-400">or drag and drop</p>
+                    </div>
+                    <input id="pdf-upload" type="file" className="hidden" accept="application/pdf" onChange={handleFileChange} />
+                </label>
+            </div>
+          </div>
+          {file && (
+            <div className="flex items-center space-x-2 text-sm p-2 bg-gray-700 rounded-md">
+              <FileText className="w-4 h-4 text-gray-400" />
+              <span className="truncate">{file.name}</span>
+            </div>
+          )}
+          <button
+            type="submit"
+            disabled={!file || isLoading}
+            className="w-full px-4 py-2 bg-blue-600 text-white rounded-md disabled:bg-gray-500 disabled:cursor-not-allowed flex items-center justify-center space-x-2 hover:bg-blue-700 transition-colors"
+          >
+            {isLoading ? (
+              <>
+                <Loader className="animate-spin w-5 h-5" />
+                <span>Processing...</span>
+              </>
+            ) : (
+              <span>Process Paper</span>
+            )}
+          </button>
+        </form>
+        {jobId && <p className="text-xs text-center mt-2 text-gray-400">Job ID: {jobId}</p>}
+        {error && <div className="mt-4 text-red-400 text-sm bg-red-900/50 p-3 rounded-md">{error}</div>}
+      </aside>
+
+      {/* Content */}
+      <main className="w-3/4 p-8 flex flex-col overflow-y-auto">
+        {paperData ? (
+            <>
+                <h1 className="text-3xl font-bold mb-2">{paperData.title}</h1>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">Paper ID: {paperData.paper_id}</p>
+                <div className="flex flex-col space-y-2 flex-grow">
+                    <AccordionSection title="Abstract">
+                        <div className="text-gray-500 dark:text-gray-400 italic">
+                            <p>This section is not yet implemented.</p>
+                            <p className="mt-2 text-xs">A future update will include a generated abstract of the entire paper here.</p>
+                        </div>
+                    </AccordionSection>
+
+                    <AccordionSection title="Assets Explained">
+                      <div className="flex space-x-4 overflow-x-auto h-full pb-4">
+                        {paperData.figures.map((figure: Figure) => (
+                          <div key={figure.figure_identifier} className="flex-shrink-0 w-80 bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 border border-gray-200 dark:border-gray-700 flex flex-col">
+                            <div className="bg-gray-200 dark:bg-gray-600 h-48 rounded-md mb-4 flex items-center justify-center">
+                              <span className="text-gray-500 dark:text-gray-400 text-center p-2">{figure.figure_identifier}</span>
+                            </div>
+                            <p className="text-sm text-gray-800 dark:text-gray-300 whitespace-pre-line">{figure.explanation}</p>
+                          </div>
+                        ))}
+                        {paperData.tables.map((table: Table) => (
+                          <div key={table.table_identifier} className="flex-shrink-0 w-80 bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 border border-gray-200 dark:border-gray-700 flex flex-col">
+                            <div className="bg-gray-200 dark:bg-gray-600 h-48 rounded-md mb-4 flex items-center justify-center">
+                                <span className="text-gray-500 dark:text-gray-400 text-center p-2">{table.table_identifier}</span>
+                            </div>
+                            <p className="text-sm text-gray-800 dark:text-gray-300 whitespace-pre-line">{table.explanation}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </AccordionSection>
+
+                    <AccordionSection title="Practical Take-aways">
+                        <div className="text-gray-500 dark:text-gray-400 italic">
+                            <p>This section is not yet implemented.</p>
+                            <p className="mt-2 text-xs">A future update will include a list of practical take-aways and key insights from the paper.</p>
+                        </div>
+                    </AccordionSection>
+                    
+                    <AccordionSection title="Chapter by Chapter">
+                         {paperData.sections.filter(s => s.level === 1).map(s => renderRewrittenSectionContent(s))}
+                    </AccordionSection>
+                </div>
+            </>
+        ) : (
+            <div className="flex items-center justify-center h-full text-gray-500">
+                <p>Upload a paper to begin analysis.</p>
+            </div>
+        )}
+      </main>
+    </div>
+  );
+} 
