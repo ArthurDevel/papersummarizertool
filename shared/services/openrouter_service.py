@@ -4,8 +4,76 @@ from shared.config import settings
 from typing import Dict, Any, List
 import asyncio
 import json
+import re
 
 logger = logging.getLogger(__name__)
+
+# Utilities for robust JSON parsing from LLM responses
+
+def _strip_markdown_fences(text: str) -> str:
+    """If content is wrapped in Markdown code fences, extract the inner block."""
+    if not isinstance(text, str):
+        return text
+    match = re.search(r"```(?:json)?\s*(.*?)\s*```", text, flags=re.DOTALL | re.IGNORECASE)
+    return match.group(1) if match else text
+
+
+def _extract_first_json_snippet(text: str) -> str:
+    """Extract the first balanced JSON object/array substring from text."""
+    if not isinstance(text, str):
+        return text
+    start_index = None
+    stack: List[str] = []
+    for i, ch in enumerate(text):
+        if ch == '{' or ch == '[':
+            start_index = i
+            stack = [ch]
+            break
+    if start_index is None:
+        return text.strip()
+    for j in range(start_index + 1, len(text)):
+        ch = text[j]
+        if ch == '{' or ch == '[':
+            stack.append(ch)
+        elif ch == '}' or ch == ']':
+            if not stack:
+                continue
+            open_ch = stack[-1]
+            if (open_ch == '{' and ch == '}') or (open_ch == '[' and ch == ']'):
+                stack.pop()
+                if not stack:
+                    return text[start_index:j + 1]
+    return text[start_index:].strip()
+
+
+def _safe_json_loads(raw_text: str) -> Any:
+    """
+    Try multiple strategies to parse JSON from an LLM response content string.
+    - Direct json.loads
+    - Strip markdown code fences, retry
+    - Extract first balanced JSON snippet, retry with strict=False to allow control chars
+    """
+    candidate = raw_text.strip() if isinstance(raw_text, str) else raw_text
+    try:
+        return json.loads(candidate)
+    except (TypeError, json.JSONDecodeError):
+        pass
+
+    candidate = _strip_markdown_fences(candidate).strip() if isinstance(candidate, str) else candidate
+    try:
+        return json.loads(candidate)
+    except (TypeError, json.JSONDecodeError):
+        pass
+
+    if isinstance(candidate, str):
+        candidate = _extract_first_json_snippet(candidate)
+    try:
+        # Allow control characters in strings
+        return json.loads(candidate, strict=False)  # type: ignore[arg-type]
+    except Exception:
+        logger.error("Failed to parse JSON content. Preview: %s", (candidate[:500] if isinstance(candidate, str) else str(candidate)) )
+        raise
+
 
 class OpenRouterService:
     def __init__(self):
@@ -64,7 +132,7 @@ class OpenRouterService:
             data = response.json()
             # The actual JSON content is in the 'content' field of the first choice's message
             json_content = data.get("choices", [{}])[0].get("message", {}).get("content", "{}")
-            return json.loads(json_content)
+            return _safe_json_loads(json_content)
         except httpx.HTTPStatusError as e:
             logger.error(f"HTTPStatusError calling OpenRouter for JSON response: {e}")
             logger.error(f"Request body: {json.dumps(json_payload, indent=2)}")
@@ -95,7 +163,7 @@ class OpenRouterService:
             data = response.json()
             # The actual JSON content is in the 'content' field of the first choice's message
             json_content = data.get("choices", [{}])[0].get("message", {}).get("content", "{}")
-            return json.loads(json_content)
+            return _safe_json_loads(json_content)
         except httpx.HTTPStatusError as e:
             logger.error(f"HTTPStatusError calling OpenRouter for JSON response: {e}")
             logger.error(f"Request body: {json.dumps(json_payload, indent=2)}")

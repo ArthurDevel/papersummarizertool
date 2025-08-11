@@ -4,6 +4,8 @@ import { useState, useRef } from 'react';
 import { processPaper, getJobStatus } from '../../services/api';
 import { Paper, Section, Figure, Table } from '../../types/paper';
 import { ChevronDown, Loader, UploadCloud, FileText } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 export default function QuickTestPage() {
   const [file, setFile] = useState<File | null>(null);
@@ -80,19 +82,17 @@ export default function QuickTestPage() {
   
   const renderRewrittenSectionContent = (section: Section) => (
     <div key={section.section_title} className="prose dark:prose-invert max-w-none mb-6 last:mb-0">
-      <h4 className="font-semibold">{section.section_title} (p. {section.start_page}-{section.end_page})</h4>
-      {section.rewritten_content ? (
-         <div className="mt-2 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-md text-gray-800 dark:text-gray-300" style={{ whiteSpace: 'pre-line' }}>
-          {section.rewritten_content}
-        </div>
-      ) : (
-         section.level > 1 && <p className="text-sm italic text-gray-500 dark:text-gray-400 mt-2">Content not rewritten for this subsection.</p>
+      {!section.rewritten_content && section.level === 1 && (
+        <h4 className="font-semibold">{section.section_title} (p. {section.start_page}-{section.end_page})</h4>
       )}
-      {section.subsections && section.subsections.length > 0 && (
-        <div className="ml-6 mt-4 pl-4 border-l-2 border-gray-200 dark:border-gray-700 space-y-6">
-          {section.subsections.map(sub => renderRewrittenSectionContent(sub))}
+      {section.rewritten_content && (
+        <div className="mt-2">
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+            {section.rewritten_content}
+          </ReactMarkdown>
         </div>
       )}
+      {/* Intentionally do NOT render subsections programmatically. They are included in the rewritten Markdown. */}
     </div>
   );
 
@@ -205,22 +205,28 @@ export default function QuickTestPage() {
                       </div>
                     </AccordionSection>
 
-                    <AccordionSection title="Practical Take-aways">
-                        <div className="text-gray-500 dark:text-gray-400 italic">
-                            <p>This section is not yet implemented.</p>
-                            <p className="mt-2 text-xs">A future update will include a list of practical take-aways and key insights from the paper.</p>
-                        </div>
-                    </AccordionSection>
-                    
-                    <AccordionSection title="Chapter by Chapter">
-                         {paperData.sections.filter(s => s.level === 1).map(s => renderRewrittenSectionContent(s))}
+                    <AccordionSection title="Summary">
+                      <div className="space-y-6">
+                        {paperData.sections.map((section: Section) => (
+                          <div key={section.section_title} className="border dark:border-gray-700 rounded-lg p-4">
+                            {renderRewrittenSectionContent(section)}
+                          </div>
+                        ))}
+                      </div>
                     </AccordionSection>
                 </div>
             </>
         ) : (
-            <div className="flex items-center justify-center h-full text-gray-500">
-                <p>Upload a paper to begin analysis.</p>
-            </div>
+          <div className="flex items-center justify-center h-full text-gray-500 dark:text-gray-400">
+            {isLoading ? (
+              <div className="flex flex-col items-center">
+                <Loader className="animate-spin w-10 h-10 mb-3" />
+                <p>Processing your document. This may take a few minutes...</p>
+              </div>
+            ) : (
+              <p>Upload a PDF to begin processing.</p>
+            )}
+          </div>
         )}
       </main>
     </div>

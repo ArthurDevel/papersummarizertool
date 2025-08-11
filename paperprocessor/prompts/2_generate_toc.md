@@ -13,3 +13,9 @@ Each section object in the output must have the following fields:
 
 Return a single JSON array of top-level section objects. Do not include any other text or explanations in your response.
 
+Strict formatting requirements:
+- Return ONLY valid JSON. No prose, no markdown, no code fences.
+- All strings must escape newlines and tabs (use \n and \t). Do not include raw control characters.
+- Use only ASCII quotes (") for strings and keys.
+- Do not include trailing commas.
+

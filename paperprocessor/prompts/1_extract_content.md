@@ -17,3 +17,9 @@ Analyze the provided page images and return a single JSON object containing thre
 
 Ensure the output is a single, valid JSON object. Do not include any other text or explanations in your response.
 
+Strict formatting requirements:
+- Return ONLY valid JSON. No prose, no markdown, no code fences.
+- All strings must escape newlines and tabs (use \n and \t). Do not include raw control characters.
+- Use only ASCII quotes (") for strings and keys.
+- Do not include trailing commas.
+
