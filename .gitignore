@@ -1,6 +1,9 @@
 # Git
 .git
 
+# Detectron
+publaynet_config.yaml
+publaynet_model.pth
 
 # Python
 .venv/
