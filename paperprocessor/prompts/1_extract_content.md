@@ -1,25 +1,66 @@
-You are an expert at analyzing technical datasheets. Your task is to extract three specific types of information from a series of page images: headers, asset locations, and asset mentions.
+You are an expert document analysis AI. Your task is to analyze the pages of a research paper provided as a sequence of images.
 
-Analyze the provided page images and return a single JSON object containing three lists: `headers`, `asset_locations`, and `asset_mentions`.
+You must extract two types of information:
+1.  **Headers**: Identify all section and subsection titles in the document. For each header, provide its title, hierarchical level (e.g., 1 for a main section, 2 for a subsection), and the page number where it appears.
+2.  **Asset Mentions**: Scan the text and identify all mentions of figures and tables (e.g., "as shown in Figure 1", "see Table 2"). For each mention, record its unique identifier (e.g., "Figure 1", "Table 2") and the page number where the mention occurs.
 
-1.  **Headers**: Identify every header and sub-header on each page.
-    *   Return a flat list of objects, each with the `text` of the header and the `page` number it appears on.
-    *   Example: `[{ "text": "1. Introduction", "page": 1 }, { "text": "1.1. Overview", "page": 1 }]`
+Please provide the output as a single, valid JSON object with two keys: `headers` and `asset_mentions`.
 
-2.  **Asset Locations**: Identify the physical location of each unique table and figure.
-    *   Return a list of objects, each specifying the `type` ("figure" or "table"), its `identifier` (e.g., "Figure 3", "Table A-1"), and the `page` number where it is physically located.
-    *   Example: `[{ "type": "figure", "identifier": "Figure 3", "page": 6 }]`
+**JSON Schema:**
+```json
+{
+  "headers": [
+    {
+      "title": "string",
+      "level": "integer",
+      "page": "integer"
+    }
+  ],
+  "asset_mentions": [
+    {
+      "identifier": "string",
+      "page": "integer"
+    }
+  ]
+}
+```
 
-3.  **Asset Mentions**: Identify every textual reference to a table or figure.
-    *   Return a list of objects, each specifying the `type` ("figure" or "table"), the `identifier` of the asset being referenced, and the `page` number where the reference occurs.
-    *   It is common for an asset to be mentioned multiple times across the document. Capture all of them.
-    *   Example: `[{ "type": "figure", "identifier": "Figure 3", "page": 5 }, { "type": "figure", "identifier": "Figure 3", "page": 6 }]`
+**Example Output:**
+```json
+{
+  "headers": [
+    {
+      "title": "Introduction",
+      "level": 1,
+      "page": 1
+    },
+    {
+      "title": "Related Work",
+      "level": 1,
+      "page": 2
+    },
+    {
+      "title": "2.1 Prior Models",
+      "level": 2,
+      "page": 2
+    }
+  ],
+  "asset_mentions": [
+    {
+      "identifier": "Figure 1",
+      "page": 3
+    },
+    {
+      "identifier": "Table 1",
+      "page": 4
+    },
+    {
+      "identifier": "Figure 1",
+      "page": 5
+    }
+  ]
+}
+```
 
-Ensure the output is a single, valid JSON object. Do not include any other text or explanations in your response.
-
-Strict formatting requirements:
-- Return ONLY valid JSON. No prose, no markdown, no code fences.
-- All strings must escape newlines and tabs (use \n and \t). Do not include raw control characters.
-- Use only ASCII quotes (") for strings and keys.
-- Do not include trailing commas.
+Do not include any other information or commentary in your response. The output must be only the specified JSON object.
 

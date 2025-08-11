@@ -34,10 +34,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy Python requirements and install packages
+# Note: scipy is now a direct dependency
 COPY requirements.txt ./
-# Note: We will need to add mysqlclient to requirements.txt later in step 6
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Install Detectron2 separately
+RUN pip install --no-cache-dir 'git+https://github.com/facebookresearch/detectron2.git'
+
+# Pre-download and cache the layout model to a non-volume-mounted path.
+RUN mkdir -p /models
+RUN wget -O /models/publaynet_config.yml "https://www.dropbox.com/s/f3b12qc4hc0yh4m/config.yml?dl=1"
+RUN wget -O /models/publaynet_model.pth "https://www.dropbox.com/s/dgy9c10wykk4lq4/model_final.pth?dl=1"
 
 # Copy application code
 COPY . .

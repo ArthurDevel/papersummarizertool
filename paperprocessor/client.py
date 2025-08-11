@@ -7,10 +7,13 @@ import json
 from PIL import Image
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
+import re
 
 from paperprocessor.internals.pdf_to_image import convert_pdf_to_images
+from paperprocessor.internals.asset_extraction import AssetExtractor
 from shared.services.openrouter_service import openrouter_service
 from api.types.paper_processing_api_models import Paper
+
 
 class PaperProcessorClient:
     """
@@ -23,6 +26,7 @@ class PaperProcessorClient:
         """
         self.prompts_dir = os.path.join(os.path.dirname(__file__), 'prompts')
         self.executor = ThreadPoolExecutor(max_workers=os.cpu_count())
+        self.asset_extractor = AssetExtractor()
         logging.info(f"PaperProcessorClient initialized. Prompts loading from: {self.prompts_dir}")
 
     def _load_prompt(self, file_name: str) -> str:
@@ -44,26 +48,51 @@ class PaperProcessorClient:
         image.save(buffered, format="PNG")
         return base64.b64encode(buffered.getvalue()).decode('utf-8')
 
-    async def _extract_initial_content(self, images: List[Image.Image]) -> Dict[str, Any]:
-        """Processes images to extract headers and asset information."""
-        logging.info(f"Step 2: Starting initial content extraction for {len(images)} pages.")
+    async def _extract_assets_and_mentions(
+        self, pdf_contents: bytes, images: List[Image.Image]
+    ) -> Dict[str, Any]:
+        """
+        Runs asset extraction and LLM-based content analysis concurrently.
+        - The `AssetExtractor` finds and maps figures/tables.
+        - The LLM identifies headers and where assets are mentioned in the text.
+        """
+        logging.info("Step 2: Starting asset extraction and content analysis.")
+        loop = asyncio.get_running_loop()
+
+        # Task 1: Run the CPU-bound asset extraction in a thread
+        extract_assets_task = loop.run_in_executor(
+            self.executor, self.asset_extractor.extract_assets, pdf_contents
+        )
+
+        # Task 2: Run the I/O-bound LLM call for headers and mentions
         system_prompt = self._load_prompt("1_extract_content.md")
         user_prompt_parts = [
-            {"type": "text", "text": "Here are the pages of the document. Please analyze them and provide the requested JSON output."}
+            {"type": "text", "text": "Analyze the document pages to identify all headers and all textual mentions of figures and tables. Provide the output in the requested JSON format."}
         ] + [
             {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{self._image_to_base64(img)}"}}
             for img in images
         ]
-
-        response = await openrouter_service.get_multimodal_json_response(
+        
+        llm_analysis_task = openrouter_service.get_multimodal_json_response(
             system_prompt=system_prompt,
             user_prompt_parts=user_prompt_parts,
             model="anthropic/claude-3.5-sonnet"
         )
-        logging.info("Successfully extracted initial content.")
-        if "headers" not in response or "asset_locations" not in response or "asset_mentions" not in response:
-            raise ValueError("Invalid response format from content extraction LLM.")
-        return response
+
+        # Await both tasks
+        extracted_assets, llm_analysis = await asyncio.gather(
+            extract_assets_task, llm_analysis_task
+        )
+
+        if "headers" not in llm_analysis or "asset_mentions" not in llm_analysis:
+            raise ValueError("Invalid response format from content analysis LLM.")
+
+        # Combine results
+        return {
+            "assets": extracted_assets,
+            "headers": llm_analysis["headers"],
+            "asset_mentions": llm_analysis["asset_mentions"],
+        }
 
     async def _generate_toc(self, headers: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Generates a hierarchical table of contents from a flat list of headers."""
@@ -90,20 +119,22 @@ class PaperProcessorClient:
         # Find all pages where the asset is mentioned
         mention_pages = {m["page"] for m in asset_mentions if m["identifier"] == identifier}
         
-        # Get the image of the page where the asset is located
-        location_image = all_images[location_page - 1]
+        # The asset image is now passed in directly, so we just encode it
+        asset_image_base64 = base64.b64encode(asset_info["image_bytes"]).decode('utf-8')
 
         # Get images from all sections where the asset is mentioned
         # This is a simplification; a more robust solution would map pages to sections
         context_images = {page - 1: all_images[page - 1] for page in mention_pages}
-        context_images[location_page - 1] = location_image # Ensure location page is included
+        context_images[location_page - 1] = all_images[location_page - 1] # Ensure location page is included
 
         system_prompt = self._load_prompt("3_explain_asset.md")
         user_prompt_parts = [
-            {"type": "text", "text": f"Please explain the following {asset_type}: {identifier}"}
+            {"type": "text", "text": f"Please explain the following {asset_type.lower()}: {identifier}. The asset itself is provided as the first image."}
+        ] + [
+            {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{asset_image_base64}"}}
         ] + [
             {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{self._image_to_base64(img)}"}}
-            for img in context_images.values()
+            for page, img in context_images.items() if page != location_page -1
         ]
 
         explanation_response = await openrouter_service.get_multimodal_json_response(
@@ -112,21 +143,24 @@ class PaperProcessorClient:
             model="anthropic/claude-3.5-sonnet"
         )
 
+        # Sanitize the identifier for use in a filename
+        safe_identifier = re.sub(r'[^a-zA-Z0-9_-]+', '_', identifier)
+
         return {
-            f"{asset_type}_identifier": identifier,
+            f"{asset_type.lower()}_identifier": identifier,
             "location_page": location_page,
             "explanation": explanation_response.get("explanation", "Could not generate explanation."),
-            "image_path": f"page_{location_page}.png", # Placeholder path
+            "image_path": f"page_{location_page}_{safe_identifier}.png",
             "referenced_on_pages": sorted(list(mention_pages))
         }
 
-    async def _explain_assets(self, asset_locations: List[Dict[str, Any]], asset_mentions: List[Dict[str, Any]], all_images: List[Image.Image], toc: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+    async def _explain_assets(self, assets: List[Dict[str, Any]], asset_mentions: List[Dict[str, Any]], all_images: List[Image.Image], toc: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
         """Generates explanations for all tables and figures."""
         logging.info("Step 4: Generating asset explanations.")
         
         tasks = [
             self._explain_asset(asset, all_images, toc, asset_mentions) 
-            for asset in asset_locations
+            for asset in assets
         ]
         
         results = await asyncio.gather(*tasks)
@@ -211,16 +245,16 @@ class PaperProcessorClient:
             self.executor, convert_pdf_to_images, pdf_contents
         )
 
-        # Step 2: Initial Content Extraction
-        content_extraction_result = await self._extract_initial_content(images)
+        # Step 2: Extract assets and high-level content structure
+        extraction_result = await self._extract_assets_and_mentions(pdf_contents, images)
         
         # Step 3: Generate Table of Contents
-        toc = await self._generate_toc(content_extraction_result["headers"])
+        toc = await self._generate_toc(extraction_result["headers"])
 
         # Steps 4 & 5: Explain Assets and Process Sections (I/O-bound, run concurrently)
         asset_explanations_task = self._explain_assets(
-            content_extraction_result["asset_locations"],
-            content_extraction_result["asset_mentions"],
+            extraction_result["assets"],
+            extraction_result["asset_mentions"],
             images,
             toc
         )
@@ -250,8 +284,11 @@ class PaperProcessorClient:
         logging.info("Paper processing pipeline finished.")
         return final_result
 
-# Global instance
+# Global instance for the application to use
 paper_processor_client = PaperProcessorClient()
 
 async def process_paper_pdf(pdf_contents: bytes) -> Dict[str, Any]:
+    """
+    Processes a PDF file by calling the global paper processor client.
+    """
     return await paper_processor_client.process_paper_pdf(pdf_contents)
