@@ -3,6 +3,7 @@ export interface Figure {
   location_page: number;
   explanation: string;
   image_path: string;
+  image_data_url: string;
   referenced_on_pages: number[];
 }
 
@@ -11,6 +12,7 @@ export interface Table {
   location_page: number;
   explanation: string;
   image_path: string;
+  image_data_url: string;
   referenced_on_pages: number[];
 }
 

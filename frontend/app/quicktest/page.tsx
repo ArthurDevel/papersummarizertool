@@ -188,16 +188,24 @@ export default function QuickTestPage() {
                       <div className="flex space-x-4 overflow-x-auto h-full pb-4">
                         {paperData.figures.map((figure: Figure) => (
                           <div key={figure.figure_identifier} className="flex-shrink-0 w-80 bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 border border-gray-200 dark:border-gray-700 flex flex-col">
-                            <div className="bg-gray-200 dark:bg-gray-600 h-48 rounded-md mb-4 flex items-center justify-center">
-                              <span className="text-gray-500 dark:text-gray-400 text-center p-2">{figure.figure_identifier}</span>
+                            <div className="bg-gray-200 dark:bg-gray-600 h-48 rounded-md mb-4 flex items-center justify-center overflow-hidden">
+                              {figure.image_data_url ? (
+                                <img src={figure.image_data_url} alt={figure.figure_identifier} className="object-contain h-48 w-full" />
+                              ) : (
+                                <span className="text-gray-500 dark:text-gray-400 text-center p-2">{figure.figure_identifier}</span>
+                              )}
                             </div>
                             <p className="text-sm text-gray-800 dark:text-gray-300 whitespace-pre-line">{figure.explanation}</p>
                           </div>
                         ))}
                         {paperData.tables.map((table: Table) => (
                           <div key={table.table_identifier} className="flex-shrink-0 w-80 bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 border border-gray-200 dark:border-gray-700 flex flex-col">
-                            <div className="bg-gray-200 dark:bg-gray-600 h-48 rounded-md mb-4 flex items-center justify-center">
+                            <div className="bg-gray-200 dark:bg-gray-600 h-48 rounded-md mb-4 flex items-center justify-center overflow-hidden">
+                              {table.image_data_url ? (
+                                <img src={table.image_data_url} alt={table.table_identifier} className="object-contain h-48 w-full" />
+                              ) : (
                                 <span className="text-gray-500 dark:text-gray-400 text-center p-2">{table.table_identifier}</span>
+                              )}
                             </div>
                             <p className="text-sm text-gray-800 dark:text-gray-300 whitespace-pre-line">{table.explanation}</p>
                           </div>

@@ -6,6 +6,7 @@ class Figure(BaseModel):
     location_page: int
     explanation: str
     image_path: str
+    image_data_url: str
     referenced_on_pages: List[int]
 
 class Table(BaseModel):
@@ -13,6 +14,7 @@ class Table(BaseModel):
     location_page: int
     explanation: str
     image_path: str
+    image_data_url: str
     referenced_on_pages: List[int]
 
 class Section(BaseModel):

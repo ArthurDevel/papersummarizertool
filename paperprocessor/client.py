@@ -76,7 +76,7 @@ class PaperProcessorClient:
         llm_analysis_task = openrouter_service.get_multimodal_json_response(
             system_prompt=system_prompt,
             user_prompt_parts=user_prompt_parts,
-            model="anthropic/claude-3.5-sonnet"
+            model="google/gemini-2.5-pro"
         )
 
         # Await both tasks
@@ -103,7 +103,7 @@ class PaperProcessorClient:
         response = await openrouter_service.get_json_response(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
-            model="anthropic/claude-3.5-sonnet"
+            model="google/gemini-2.5-pro"
         )
         logging.info("Successfully generated Table of Contents.")
         if not isinstance(response, list):
@@ -119,7 +119,7 @@ class PaperProcessorClient:
         # Find all pages where the asset is mentioned
         mention_pages = {m["page"] for m in asset_mentions if m["identifier"] == identifier}
         
-        # The asset image is now passed in directly, so we just encode it
+        # Encode cropped asset for frontend display only
         asset_image_base64 = base64.b64encode(asset_info["image_bytes"]).decode('utf-8')
 
         # Get images from all sections where the asset is mentioned
@@ -128,19 +128,21 @@ class PaperProcessorClient:
         context_images[location_page - 1] = all_images[location_page - 1] # Ensure location page is included
 
         system_prompt = self._load_prompt("3_explain_asset.md")
+        pages_to_send = [location_page] + sorted([p for p in mention_pages if p != location_page])
         user_prompt_parts = [
-            {"type": "text", "text": f"Please explain the following {asset_type.lower()}: {identifier}. The asset itself is provided as the first image."}
+            {"type": "text", "text": (
+                f"Please explain the following {asset_type.lower()}: {identifier}. "
+                "The following images are full pages that contain the asset or reference it."
+            )}
         ] + [
-            {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{asset_image_base64}"}}
-        ] + [
-            {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{self._image_to_base64(img)}"}}
-            for page, img in context_images.items() if page != location_page -1
+            {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{self._image_to_base64(all_images[p - 1])}"}}
+            for p in pages_to_send
         ]
 
         explanation_response = await openrouter_service.get_multimodal_json_response(
             system_prompt=system_prompt,
             user_prompt_parts=user_prompt_parts,
-            model="anthropic/claude-3.5-sonnet"
+            model="google/gemini-2.5-pro"
         )
 
         # Sanitize the identifier for use in a filename
@@ -151,6 +153,7 @@ class PaperProcessorClient:
             "location_page": location_page,
             "explanation": explanation_response.get("explanation", "Could not generate explanation."),
             "image_path": f"page_{location_page}_{safe_identifier}.png",
+            "image_data_url": f"data:image/png;base64,{asset_image_base64}",
             "referenced_on_pages": sorted(list(mention_pages))
         }
 
@@ -194,11 +197,11 @@ class PaperProcessorClient:
         # Make two separate, non-blocking calls to the LLM
         rewrite_task = openrouter_service.get_llm_response(
             messages=[{"role": "system", "content": rewrite_system_prompt}, {"role": "user", "content": user_prompt_parts}],
-            model="anthropic/claude-3.5-sonnet"
+            model="google/gemini-2.5-pro"
         )
         summary_task = openrouter_service.get_llm_response(
             messages=[{"role": "system", "content": summary_system_prompt}, {"role": "user", "content": user_prompt_parts}],
-            model="anthropic/claude-3.5-sonnet"
+            model="google/gemini-2.5-pro"
         )
 
         rewrite_response, summary_response = await asyncio.gather(rewrite_task, summary_task)
