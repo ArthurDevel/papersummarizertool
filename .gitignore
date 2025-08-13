@@ -38,3 +38,15 @@ frontend/.next/
 .key
 # Docker local override
 docker-compose.override.yaml
+
+# Debug/artifacts
+debug_output/
+
+# Model weights (prevent large binaries)
+*.pth
+
+# Logs
+*.log
+
+# Generated OCR output
+ocr_output.txt
