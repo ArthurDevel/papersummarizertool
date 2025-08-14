@@ -3,7 +3,7 @@
 import { useState, useRef } from 'react';
 import { processPaper, getJobStatus } from '../../services/api';
 import { Paper, Section, Figure, Table } from '../../types/paper';
-import { ChevronDown, Loader, UploadCloud, FileText } from 'lucide-react';
+import { ChevronDown, Loader, UploadCloud, FileText, Download } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -78,6 +78,24 @@ export default function QuickTestPage() {
 
   const toggleSection = (section: string) => {
     setOpenSection(openSection === section ? null : section);
+  };
+
+  const exportPaperAsJson = () => {
+    if (!paperData) return;
+    const safeTitle = (paperData.title || 'paper')
+      .toLowerCase()
+      .replace(/[^a-z0-9-_]+/g, '_')
+      .slice(0, 80);
+    const fileName = `${safeTitle}_${paperData.paper_id || 'export'}.json`;
+    const blob = new Blob([JSON.stringify(paperData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
   };
   
   const renderRewrittenSectionContent = (section: Section) => (
@@ -174,8 +192,21 @@ export default function QuickTestPage() {
       <main className="w-3/4 p-8 flex flex-col overflow-y-auto">
         {paperData ? (
             <>
-                <h1 className="text-3xl font-bold mb-2">{paperData.title}</h1>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">Paper ID: {paperData.paper_id}</p>
+                <div className="flex items-start justify-between mb-6">
+                  <div>
+                    <h1 className="text-3xl font-bold mb-2">{paperData.title}</h1>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">Paper ID: {paperData.paper_id}</p>
+                  </div>
+                  <button
+                    onClick={exportPaperAsJson}
+                    className="inline-flex items-center px-3 py-2 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 transition-colors disabled:bg-gray-500"
+                    disabled={isLoading}
+                    title="Download JSON export"
+                  >
+                    <Download className="w-4 h-4 mr-2" />
+                    <span>Export JSON</span>
+                  </button>
+                </div>
                 <div className="flex flex-col space-y-2 flex-grow">
                     <AccordionSection title="Abstract">
                         <div className="text-gray-500 dark:text-gray-400 italic">

@@ -6,6 +6,7 @@ const nextConfig = {
       {
         source: '/api/:path*',
         destination: `http://127.0.0.1:${process.env.NEXT_PUBLIC_CONTAINERPORT_API}/:path*`,
+        //destination: `http://127.0.0.1:8010/:path*`,
       },
     ]
   },

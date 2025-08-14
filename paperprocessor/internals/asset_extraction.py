@@ -140,6 +140,15 @@ class AssetExtractor:
                 _, buffer = cv2.imencode('.png', cropped_asset_img)
                 img_bytes = buffer.tobytes()
 
+                # Log cropped asset image details
+                try:
+                    crop_h, crop_w = cropped_asset_img.shape[:2]
+                    logging.info(
+                        f"Cropped asset on page {page_num + 1} bbox=({x1},{y1},{x2},{y2}) size={crop_w}x{crop_h} px, bytes={len(img_bytes)} (PNG)"
+                    )
+                except Exception as e:
+                    logging.warning(f"Could not log cropped asset details on page {page_num + 1}: {e}")
+
                 asset_id = asset_mapping[asset_block.coordinates]
                 asset_type = "Table" if "Table" in asset_id else "Figure"
 

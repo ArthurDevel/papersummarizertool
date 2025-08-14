@@ -1,0 +1,30 @@
+# VCS
+.git
+
+# Python caches and virtualenvs
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pytest_cache/
+.mypy_cache/
+.venv/
+venv/
+
+# Node / Next.js artifacts
+node_modules/
+frontend/node_modules/
+frontend/.next/
+frontend/.turbo/
+
+# OS / Editor
+.DS_Store
+*.swp
+*.swo
+
+# Large local assets not needed in build context
+publaynet_model.pth
+*.pdf
+
+data/
+testscripts/

@@ -30,6 +30,14 @@ def convert_pdf_to_images(pdf_bytes: bytes) -> List[Image.Image]:
             img_bytes = pix.tobytes("png")
             image = Image.open(io.BytesIO(img_bytes))
             images.append(image)
+            # Log page image details
+            try:
+                width, height = image.size
+                logger.info(
+                    f"PDF->Image page {page_num + 1}: size={width}x{height} px, mode={image.mode}, bytes={len(img_bytes)} (PNG), dpi=300"
+                )
+            except Exception as e:
+                logger.warning(f"Could not log image details for page {page_num + 1}: {e}")
             
         logger.info(f"Successfully converted PDF with {len(images)} pages to images.")
         return images
