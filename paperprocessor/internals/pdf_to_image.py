@@ -6,6 +6,29 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+def _resize_to_max(image: Image.Image, max_width: int, max_height: int) -> Image.Image:
+    """
+    Downscale the image to fit within (max_width x max_height) while preserving
+    aspect ratio. If the image already fits, return it unchanged.
+    """
+    width, height = image.size
+    if width <= max_width and height <= max_height:
+        return image
+
+    scale_w = max_width / float(width)
+    scale_h = max_height / float(height)
+    scale = min(scale_w, scale_h)
+
+    new_width = max(1, int(width * scale))
+    new_height = max(1, int(height * scale))
+
+    try:
+        resample = Image.Resampling.LANCZOS  # Pillow >= 9.1.0
+    except AttributeError:  # Pillow < 9.1.0
+        resample = Image.LANCZOS
+
+    return image.resize((new_width, new_height), resample=resample)
+
 def convert_pdf_to_images(pdf_bytes: bytes) -> List[Image.Image]:
     """
     Converts a PDF document into a list of PIL Image objects.
@@ -29,12 +52,25 @@ def convert_pdf_to_images(pdf_bytes: bytes) -> List[Image.Image]:
             # Convert pixmap to a PIL Image
             img_bytes = pix.tobytes("png")
             image = Image.open(io.BytesIO(img_bytes))
-            images.append(image)
+
+            # Downscale to fit within 1080x1920 if larger
+            orig_width, orig_height = image.size
+            resized_image = _resize_to_max(image, max_width=1080, max_height=1920)
+
+            # Compute bytes for logging after potential resize
+            resized_buffer = io.BytesIO()
+            resized_image.save(resized_buffer, format="PNG")
+            resized_bytes = resized_buffer.getvalue()
+
+            images.append(resized_image)
             # Log page image details
             try:
-                width, height = image.size
                 logger.info(
-                    f"PDF->Image page {page_num + 1}: size={width}x{height} px, mode={image.mode}, bytes={len(img_bytes)} (PNG), dpi=300"
+                    (
+                        f"PDF->Image page {page_num + 1}: original={orig_width}x{orig_height} px, "
+                        f"orig_bytes={len(img_bytes)} (PNG), resized={resized_image.width}x{resized_image.height} px, "
+                        f"resized_bytes={len(resized_bytes)} (PNG), mode={resized_image.mode}, dpi=300"
+                    )
                 )
             except Exception as e:
                 logger.warning(f"Could not log image details for page {page_num + 1}: {e}")

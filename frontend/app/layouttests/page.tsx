@@ -1,0 +1,331 @@
+"use client";
+
+import { useEffect, useState, useRef } from 'react';
+import { Paper, Section, Figure, Table } from '../../types/paper';
+import { Loader, Download } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+
+export default function LayoutTestsPage() {
+  const [paperData, setPaperData] = useState<Paper | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+  const [availableFiles, setAvailableFiles] = useState<string[]>([]);
+  const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const mainRef = useRef<HTMLDivElement | null>(null);
+  const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
+  const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
+
+  const fetchIndexAndMaybeData = async (explicitFile?: string | null) => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+      const indexRes = await fetch('/layouttests/data', { signal: controller.signal, cache: 'no-store' });
+      if (!indexRes.ok) throw new Error(`Failed to list preloaded papers: ${indexRes.status}`);
+      const indexJson = await indexRes.json();
+      const files: string[] = Array.isArray(indexJson?.files) ? indexJson.files : [];
+      setAvailableFiles(files);
+      const fileToLoad = explicitFile ?? selectedFile ?? files[0] ?? null;
+      if (!fileToLoad) throw new Error('No preloaded papers found in preloaded_papers/');
+      setSelectedFile(fileToLoad);
+      const response = await fetch(`/layouttests/data?file=${encodeURIComponent(fileToLoad)}`, { signal: controller.signal, cache: 'no-store' });
+      if (!response.ok) {
+        throw new Error(`Failed to load JSON: ${response.status} ${response.statusText}`);
+      }
+      const data: Paper = await response.json();
+      setPaperData(data);
+    } catch (err) {
+      if ((err as any)?.name === 'AbortError') return;
+      setError(err instanceof Error ? err.message : 'Unknown error loading JSON');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchIndexAndMaybeData();
+    return () => abortRef.current?.abort();
+  }, []);
+
+  useEffect(() => {
+    if (!paperData) return;
+    const container = mainRef.current;
+    if (!container) return;
+
+    const computeActive = () => {
+      const containerTop = container.getBoundingClientRect().top;
+      let bestId: string | null = null;
+      let bestDelta = Number.POSITIVE_INFINITY;
+      paperData.sections.forEach((_, idx) => {
+        const id = `sec-${idx}`;
+        const el = sectionRefs.current[id];
+        if (!el) return;
+        const rect = el.getBoundingClientRect();
+        const delta = Math.abs(rect.top - containerTop - 16);
+        if (delta < bestDelta) {
+          bestDelta = delta;
+          bestId = id;
+        }
+      });
+      if (bestId !== activeSectionId) setActiveSectionId(bestId);
+    };
+
+    computeActive();
+    let raf = 0 as number | 0;
+    const onScroll = () => {
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0 as number | 0;
+        computeActive();
+      }) as unknown as number;
+    };
+    container.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll, { passive: true } as any);
+    return () => {
+      container.removeEventListener('scroll', onScroll as any);
+      window.removeEventListener('resize', onScroll as any);
+      if (raf) cancelAnimationFrame(raf as unknown as number);
+    };
+  }, [paperData, activeSectionId]);
+
+  const exportPaperAsJson = () => {
+    if (!paperData) return;
+    const safeTitle = (paperData.title || 'paper')
+      .toLowerCase()
+      .replace(/[^a-z0-9-_]+/g, '_')
+      .slice(0, 80);
+    const fileName = `${safeTitle}_${paperData.paper_id || 'export'}.json`;
+    const blob = new Blob([JSON.stringify(paperData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const renderRewrittenSectionContent = (section: Section) => (
+    <div key={section.section_title} className="prose dark:prose-invert max-w-none mb-6 last:mb-0">
+      {!section.rewritten_content && section.level === 1 && (
+        <h4 className="font-semibold">{section.section_title} (p. {section.start_page}-{section.end_page})</h4>
+      )}
+      {section.rewritten_content && (
+        <div className="mt-2">
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+            {section.rewritten_content}
+          </ReactMarkdown>
+        </div>
+      )}
+    </div>
+  );
+
+  const assetBelongsToSection = (
+    startPage: number,
+    endPage: number,
+    locationPage: number,
+    referencedOnPages: number[]
+  ) => {
+    const inRange = (p: number) => p >= startPage && p <= endPage;
+    if (inRange(locationPage)) return true;
+    if (Array.isArray(referencedOnPages)) {
+      return referencedOnPages.some((p) => inRange(p));
+    }
+    return false;
+  };
+
+  const getAssetsForSection = (section: Section, figures: Figure[], tables: Table[]) => {
+    const sectStart = section.start_page ?? Number.MIN_SAFE_INTEGER;
+    const sectEnd = section.end_page ?? Number.MAX_SAFE_INTEGER;
+    const sectionFigures = (figures || []).filter((f) =>
+      assetBelongsToSection(sectStart, sectEnd, f.location_page, f.referenced_on_pages)
+    );
+    const sectionTables = (tables || []).filter((t) =>
+      assetBelongsToSection(sectStart, sectEnd, t.location_page, t.referenced_on_pages)
+    );
+    const byPageThenId = <T extends { location_page: number; [k: string]: any }>(a: T, b: T) => {
+      if (a.location_page !== b.location_page) return a.location_page - b.location_page;
+      const aId = (a.figure_identifier || a.table_identifier || '').toString();
+      const bId = (b.figure_identifier || b.table_identifier || '').toString();
+      return aId.localeCompare(bId);
+    };
+    sectionFigures.sort(byPageThenId);
+    sectionTables.sort(byPageThenId);
+    return { sectionFigures, sectionTables };
+  };
+
+  return (
+    <div className="flex h-screen bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
+      {/* Left Sidebar: Sections */}
+      <aside className="w-64 bg-gray-50 dark:bg-gray-800/60 p-4 border-r border-gray-200 dark:border-gray-700 overflow-y-auto">
+        <h2 className="text-xl font-semibold mb-4">Sections</h2>
+        {paperData ? (
+          <ul className="space-y-1">
+            {paperData.sections.map((section: Section, idx: number) => {
+              const id = `sec-${idx}`;
+              const isActive = activeSectionId === id;
+              return (
+                <li key={id}>
+                  <button
+                    className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
+                      isActive ? 'bg-blue-600 text-white' : 'bg-white dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200'
+                    }`}
+                    onClick={() => {
+                      const el = sectionRefs.current[id];
+                      el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                      setActiveSectionId(id);
+                    }}
+                    title={`Go to ${section.section_title}`}
+                  >
+                    <span className="mr-2 font-semibold">{idx + 1}.</span>
+                    <span>{section.section_title || `Section ${idx + 1}`}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
+          <div className="text-sm text-gray-500 dark:text-gray-400">Loading sections…</div>
+        )}
+      </aside>
+
+      {/* Content */}
+      <main ref={mainRef} className="flex-1 p-8 flex flex-col overflow-y-auto">
+        {paperData ? (
+          <>
+            <div className="flex items-start justify-between mb-6">
+              <div>
+                <h1 className="text-3xl font-bold mb-2">{paperData.title}</h1>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Paper ID: {paperData.paper_id}</p>
+              </div>
+              <div>
+                <button
+                  onClick={exportPaperAsJson}
+                  disabled={!paperData || isLoading}
+                  className="inline-flex items-center px-3 py-2 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 transition-colors disabled:bg-gray-500"
+                  title="Download JSON export"
+                >
+                  <Download className="w-4 h-4 mr-2" />
+                  <span>Export JSON</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="flex flex-col space-y-6 flex-grow">
+              {paperData.sections.map((section: Section, idx: number) => {
+                const sectionId = `sec-${idx}`;
+                const { sectionFigures, sectionTables } = getAssetsForSection(
+                  section,
+                  paperData.figures || [],
+                  paperData.tables || []
+                );
+
+                return (
+                  <div
+                    key={section.section_title + '-' + idx}
+                    ref={(el) => (sectionRefs.current[sectionId] = el)}
+                    className="border dark:border-gray-700 rounded-lg p-4 bg-white dark:bg-gray-800"
+                  >
+                    {renderRewrittenSectionContent(section)}
+
+                    {(sectionFigures.length > 0 || sectionTables.length > 0) && (
+                      <div className="mt-6 space-y-6">
+                        {sectionFigures.length > 0 && (
+                          <div className="space-y-3">
+                            <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Figures</h4>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                              {sectionFigures.map((figure: Figure) => (
+                                <div key={figure.figure_identifier} className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 border border-gray-200 dark:border-gray-700 flex flex-col">
+                                  <div className="bg-gray-200 dark:bg-gray-600 h-48 rounded-md mb-4 flex items-center justify-center overflow-hidden">
+                                    {figure.image_data_url ? (
+                                      <img src={figure.image_data_url} alt={figure.figure_identifier} className="object-contain h-48 w-full" />
+                                    ) : (
+                                      <span className="text-gray-500 dark:text-gray-400 text-center p-2">{figure.figure_identifier}</span>
+                                    )}
+                                  </div>
+                                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">p. {figure.location_page}</p>
+                                  <p className="text-sm text-gray-800 dark:text-gray-300 whitespace-pre-line">{figure.explanation}</p>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {sectionTables.length > 0 && (
+                          <div className="space-y-3">
+                            <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Tables</h4>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                              {sectionTables.map((table: Table) => (
+                                <div key={table.table_identifier} className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 border border-gray-200 dark:border-gray-700 flex flex-col">
+                                  <div className="bg-gray-200 dark:bg-gray-600 h-48 rounded-md mb-4 flex items-center justify-center overflow-hidden">
+                                    {table.image_data_url ? (
+                                      <img src={table.image_data_url} alt={table.table_identifier} className="object-contain h-48 w-full" />
+                                    ) : (
+                                      <span className="text-gray-500 dark:text-gray-400 text-center p-2">{table.table_identifier}</span>
+                                    )}
+                                  </div>
+                                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">p. {table.location_page}</p>
+                                  <p className="text-sm text-gray-800 dark:text-gray-300 whitespace-pre-line">{table.explanation}</p>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        ) : (
+          <div className="flex items-center justify-center h-full text-gray-500 dark:text-gray-400">
+            {isLoading ? (
+              <div className="flex flex-col items-center">
+                <Loader className="animate-spin w-10 h-10 mb-3" />
+                <p>Loading JSON...</p>
+              </div>
+            ) : (
+              <p>No data loaded.</p>
+            )}
+          </div>
+        )}
+      </main>
+
+      {/* Right Sidebar: Similar Papers */}
+      <aside className="w-1/4 bg-gray-800 text-white p-6 overflow-y-auto">
+        <h2 className="text-2xl font-bold mb-6">Similar papers</h2>
+        {error && <div className="text-red-300 text-sm bg-red-900/40 p-3 rounded-md mb-4">{error}</div>}
+        {isLoading && (
+          <div className="flex items-center text-sm text-gray-300 mb-4">
+            <Loader className="animate-spin w-4 h-4 mr-2" /> Loading list...
+          </div>
+        )}
+        <ul className="space-y-2">
+          {availableFiles
+            .filter((f) => f !== (selectedFile ?? ''))
+            .map((name) => (
+              <li key={name}>
+                <button
+                  onClick={() => fetchIndexAndMaybeData(name)}
+                  className="w-full text-left px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded-md transition-colors text-sm"
+                >
+                  {name}
+                </button>
+              </li>
+            ))}
+        </ul>
+        {availableFiles.filter((f) => f !== (selectedFile ?? '')).length === 0 && (
+          <p className="text-sm text-gray-400">No other preloaded papers found. Add more JSON files to <span className="font-mono">preloaded_papers/</span>.</p>
+        )}
+      </aside>
+    </div>
+  );
+}
+
+
