@@ -16,6 +16,7 @@ export default function LayoutTestsPage() {
   const mainRef = useRef<HTMLDivElement | null>(null);
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
+  const [footerOverlap, setFooterOverlap] = useState<number>(0);
 
   const fetchIndexAndMaybeData = async (explicitFile?: string | null) => {
     try {
@@ -74,19 +75,34 @@ export default function LayoutTestsPage() {
       if (bestId !== activeSectionId) setActiveSectionId(bestId);
     };
 
+    const computeFooter = () => {
+      const footerEl = document.getElementById('site-footer');
+      if (!footerEl) {
+        if (footerOverlap !== 0) setFooterOverlap(0);
+        return;
+      }
+      const rect = footerEl.getBoundingClientRect();
+      const vh = window.innerHeight || 0;
+      const overlap = Math.max(0, vh - Math.max(rect.top, 0));
+      const clamped = Math.min(overlap, vh);
+      if (clamped !== footerOverlap) setFooterOverlap(clamped);
+    };
+
     computeActive();
+    computeFooter();
     let raf = 0 as number | 0;
     const onScroll = () => {
       if (raf) return;
       raf = requestAnimationFrame(() => {
         raf = 0 as number | 0;
         computeActive();
+        computeFooter();
       }) as unknown as number;
     };
-    container.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('scroll', onScroll, { passive: true } as any);
     window.addEventListener('resize', onScroll, { passive: true } as any);
     return () => {
-      container.removeEventListener('scroll', onScroll as any);
+      window.removeEventListener('scroll', onScroll as any);
       window.removeEventListener('resize', onScroll as any);
       if (raf) cancelAnimationFrame(raf as unknown as number);
     };
@@ -160,9 +176,12 @@ export default function LayoutTestsPage() {
   };
 
   return (
-    <div className="flex h-screen bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
+    <div className="flex items-start h-full min-h-0 bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
       {/* Left Sidebar: Sections */}
-      <aside className="w-64 bg-gray-50 dark:bg-gray-800/60 p-4 border-r border-gray-200 dark:border-gray-700 overflow-y-auto">
+      <aside
+        className="w-64 bg-gray-50 dark:bg-gray-800/60 p-4 border-r border-gray-200 dark:border-gray-700 sticky top-0 self-start overflow-y-auto"
+        style={{ height: `calc(100vh - ${footerOverlap}px)` }}
+      >
         <h2 className="text-xl font-semibold mb-4">Sections</h2>
         {paperData ? (
           <ul className="space-y-1">
@@ -195,7 +214,7 @@ export default function LayoutTestsPage() {
       </aside>
 
       {/* Content */}
-      <main ref={mainRef} className="flex-1 p-8 flex flex-col overflow-y-auto">
+      <main ref={mainRef} className="flex-1 p-8 flex flex-col">
         {paperData ? (
           <>
             <div className="flex items-start justify-between mb-6">
@@ -228,7 +247,7 @@ export default function LayoutTestsPage() {
                 return (
                   <div
                     key={section.section_title + '-' + idx}
-                    ref={(el) => (sectionRefs.current[sectionId] = el)}
+                    ref={(el) => { sectionRefs.current[sectionId] = el; }}
                     className="border dark:border-gray-700 rounded-lg p-4 bg-white dark:bg-gray-800"
                   >
                     {renderRewrittenSectionContent(section)}
@@ -298,30 +317,50 @@ export default function LayoutTestsPage() {
       </main>
 
       {/* Right Sidebar: Similar Papers */}
-      <aside className="w-1/4 bg-gray-800 text-white p-6 overflow-y-auto">
-        <h2 className="text-2xl font-bold mb-6">Similar papers</h2>
-        {error && <div className="text-red-300 text-sm bg-red-900/40 p-3 rounded-md mb-4">{error}</div>}
+      <aside
+        className="w-64 bg-gray-50 dark:bg-gray-800/60 p-4 border-l border-gray-200 dark:border-gray-700 sticky top-0 self-start overflow-y-auto"
+        style={{ height: `calc(100vh - ${footerOverlap}px)` }}
+      >
+        <h2 className="text-xl font-semibold mb-4">Similar papers</h2>
+        {error && (
+          <div className="text-sm mb-4 p-3 rounded-md border border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-900/40 dark:text-red-300">
+            {error}
+          </div>
+        )}
         {isLoading && (
-          <div className="flex items-center text-sm text-gray-300 mb-4">
+          <div className="flex items-center text-sm text-gray-500 dark:text-gray-400 mb-4">
             <Loader className="animate-spin w-4 h-4 mr-2" /> Loading list...
           </div>
         )}
-        <ul className="space-y-2">
+        <ul className="space-y-1">
           {availableFiles
             .filter((f) => f !== (selectedFile ?? ''))
             .map((name) => (
               <li key={name}>
                 <button
                   onClick={() => fetchIndexAndMaybeData(name)}
-                  className="w-full text-left px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded-md transition-colors text-sm"
+                  className="w-full text-left px-3 py-2 rounded-md text-sm transition-colors bg-white dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200"
+                  title={`Open ${name}`}
+                  aria-label={`Open ${name}`}
                 >
-                  {name}
+                  <div className="flex items-start gap-3">
+                    <div className="w-16 h-12 bg-gray-200 dark:bg-gray-600 rounded-md flex-shrink-0" />
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">{name}</div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Author A, Author B</div>
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        <span className="text-[10px] px-2 py-0.5 rounded bg-gray-100 text-gray-700 dark:bg-gray-600 dark:text-gray-200">badge</span>
+                        <span className="text-[10px] px-2 py-0.5 rounded bg-gray-100 text-gray-700 dark:bg-gray-600 dark:text-gray-200">badge</span>
+                        <span className="text-[10px] px-2 py-0.5 rounded bg-gray-100 text-gray-700 dark:bg-gray-600 dark:text-gray-200">badge</span>
+                      </div>
+                    </div>
+                  </div>
                 </button>
               </li>
             ))}
         </ul>
         {availableFiles.filter((f) => f !== (selectedFile ?? '')).length === 0 && (
-          <p className="text-sm text-gray-400">No other preloaded papers found. Add more JSON files to <span className="font-mono">preloaded_papers/</span>.</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">No other preloaded papers found. Add more JSON files to <span className="font-mono">preloaded_papers/</span>.</p>
         )}
       </aside>
     </div>
