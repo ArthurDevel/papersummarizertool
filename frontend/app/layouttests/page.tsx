@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { Paper, Section, Figure, Table } from '../../types/paper';
-import { Loader, Download } from 'lucide-react';
+import { Loader } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -108,23 +108,7 @@ export default function LayoutTestsPage() {
     };
   }, [paperData, activeSectionId]);
 
-  const exportPaperAsJson = () => {
-    if (!paperData) return;
-    const safeTitle = (paperData.title || 'paper')
-      .toLowerCase()
-      .replace(/[^a-z0-9-_]+/g, '_')
-      .slice(0, 80);
-    const fileName = `${safeTitle}_${paperData.paper_id || 'export'}.json`;
-    const blob = new Blob([JSON.stringify(paperData, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = fileName;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  };
+  
 
   const renderRewrittenSectionContent = (section: Section) => (
     <div key={section.section_title} className="prose dark:prose-invert max-w-none mb-6 last:mb-0">
@@ -176,63 +160,54 @@ export default function LayoutTestsPage() {
   };
 
   return (
-    <div className="flex items-start h-full min-h-0 bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
+    <div className="flex items-start gap-4 p-4 min-h-0 text-gray-900 dark:text-gray-100">
       {/* Left Sidebar: Sections */}
-      <aside
-        className="w-64 bg-gray-50 dark:bg-gray-800/60 p-4 border-r border-gray-200 dark:border-gray-700 sticky top-0 self-start overflow-y-auto"
-        style={{ height: `calc(100vh - ${footerOverlap}px)` }}
-      >
-        <h2 className="text-xl font-semibold mb-4">Sections</h2>
-        {paperData ? (
-          <ul className="space-y-1">
-            {paperData.sections.map((section: Section, idx: number) => {
-              const id = `sec-${idx}`;
-              const isActive = activeSectionId === id;
-              return (
-                <li key={id}>
-                  <button
-                    className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
-                      isActive ? 'bg-blue-600 text-white' : 'bg-white dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200'
-                    }`}
-                    onClick={() => {
-                      const el = sectionRefs.current[id];
-                      el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                      setActiveSectionId(id);
-                    }}
-                    title={`Go to ${section.section_title}`}
-                  >
-                    <span className="mr-2 font-semibold">{idx + 1}.</span>
-                    <span>{section.section_title || `Section ${idx + 1}`}</span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        ) : (
-          <div className="text-sm text-gray-500 dark:text-gray-400">Loading sections…</div>
-        )}
-      </aside>
+      <div className="w-64 flex-shrink-0 sticky top-0 self-start pt-4 pb-4">
+        <div
+          className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-md overflow-hidden"
+          style={{ height: `calc(100vh - ${footerOverlap}px - 2rem)` }}
+        >
+          <div className="h-full overflow-y-auto p-4">
+              <h2 className="text-xl font-semibold mb-4">Sections</h2>
+              {paperData ? (
+                <ul className="space-y-1">
+                  {paperData.sections.map((section: Section, idx: number) => {
+                    const id = `sec-${idx}`;
+                    const isActive = activeSectionId === id;
+                    return (
+                      <li key={id}>
+                        <button
+                          className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
+                            isActive ? 'bg-blue-600 text-white' : 'bg-white dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200'
+                          }`}
+                          onClick={() => {
+                            const el = sectionRefs.current[id];
+                            el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                            setActiveSectionId(id);
+                          }}
+                          title={`Go to ${section.section_title}`}
+                        >
+                          <span className="mr-2 font-semibold">{idx + 1}.</span>
+                          <span>{section.section_title || `Section ${idx + 1}`}</span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : (
+                <div className="text-sm text-gray-500 dark:text-gray-400">Loading sections…</div>
+              )}
+          </div>
+        </div>
+      </div>
 
       {/* Content */}
-      <main ref={mainRef} className="flex-1 p-8 flex flex-col">
+      <main ref={mainRef} className="flex-1 p-4 flex flex-col">
         {paperData ? (
           <>
-            <div className="flex items-start justify-between mb-6">
-              <div>
-                <h1 className="text-3xl font-bold mb-2">{paperData.title}</h1>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Paper ID: {paperData.paper_id}</p>
-              </div>
-              <div>
-                <button
-                  onClick={exportPaperAsJson}
-                  disabled={!paperData || isLoading}
-                  className="inline-flex items-center px-3 py-2 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 transition-colors disabled:bg-gray-500"
-                  title="Download JSON export"
-                >
-                  <Download className="w-4 h-4 mr-2" />
-                  <span>Export JSON</span>
-                </button>
-              </div>
+            <div className="mb-4 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-md overflow-hidden p-4">
+              <h1 className="text-3xl font-bold mb-2">{paperData.title}</h1>
+              <p className="text-sm text-gray-500 dark:text-gray-400">Paper ID: {paperData.paper_id}</p>
             </div>
 
             <div className="flex flex-col space-y-6 flex-grow">
@@ -248,7 +223,7 @@ export default function LayoutTestsPage() {
                   <div
                     key={section.section_title + '-' + idx}
                     ref={(el) => { sectionRefs.current[sectionId] = el; }}
-                    className="border dark:border-gray-700 rounded-lg p-4 bg-white dark:bg-gray-800"
+                    className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-md overflow-hidden p-4"
                   >
                     {renderRewrittenSectionContent(section)}
 
@@ -317,52 +292,56 @@ export default function LayoutTestsPage() {
       </main>
 
       {/* Right Sidebar: Similar Papers */}
-      <aside
-        className="w-64 bg-gray-50 dark:bg-gray-800/60 p-4 border-l border-gray-200 dark:border-gray-700 sticky top-0 self-start overflow-y-auto"
-        style={{ height: `calc(100vh - ${footerOverlap}px)` }}
-      >
-        <h2 className="text-xl font-semibold mb-4">Similar papers</h2>
-        {error && (
-          <div className="text-sm mb-4 p-3 rounded-md border border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-900/40 dark:text-red-300">
-            {error}
+      <div className="w-64 flex-shrink-0 sticky top-0 self-start pt-4 pb-4">
+        <div
+          className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-md overflow-hidden"
+          style={{ height: `calc(100vh - ${footerOverlap}px - 2rem)` }}
+        >
+          <div className="h-full overflow-y-auto p-4">
+              <h2 className="text-xl font-semibold mb-4">Similar papers</h2>
+              {error && (
+                <div className="text-sm mb-4 p-3 rounded-md border border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-900/40 dark:text-red-300">
+                  {error}
+                </div>
+              )}
+              {isLoading && (
+                <div className="flex items-center text-sm text-gray-500 dark:text-gray-400 mb-4">
+                  <Loader className="animate-spin w-4 h-4 mr-2" /> Loading list...
+                </div>
+              )}
+              <ul className="space-y-1">
+                {availableFiles
+                  .filter((f) => f !== (selectedFile ?? ''))
+                  .map((name) => (
+                    <li key={name}>
+                      <button
+                        onClick={() => fetchIndexAndMaybeData(name)}
+                        className="w-full text-left px-3 py-2 rounded-md text-sm transition-colors bg-white dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200"
+                        title={`Open ${name}`}
+                        aria-label={`Open ${name}`}
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className="w-16 h-12 bg-gray-200 dark:bg-gray-600 rounded-md flex-shrink-0" />
+                          <div className="min-w-0">
+                            <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">{name}</div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Author A, Author B</div>
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                              <span className="text-[10px] px-2 py-0.5 rounded bg-gray-100 text-gray-700 dark:bg-gray-600 dark:text-gray-200">badge</span>
+                              <span className="text-[10px] px-2 py-0.5 rounded bg-gray-100 text-gray-700 dark:bg-gray-600 dark:text-gray-200">badge</span>
+                              <span className="text-[10px] px-2 py-0.5 rounded bg-gray-100 text-gray-700 dark:bg-gray-600 dark:text-gray-200">badge</span>
+                            </div>
+                          </div>
+                        </div>
+                      </button>
+                    </li>
+                  ))}
+              </ul>
+              {availableFiles.filter((f) => f !== (selectedFile ?? '')).length === 0 && (
+                <p className="text-sm text-gray-500 dark:text-gray-400">No other preloaded papers found. Add more JSON files to <span className="font-mono">preloaded_papers/</span>.</p>
+              )}
           </div>
-        )}
-        {isLoading && (
-          <div className="flex items-center text-sm text-gray-500 dark:text-gray-400 mb-4">
-            <Loader className="animate-spin w-4 h-4 mr-2" /> Loading list...
-          </div>
-        )}
-        <ul className="space-y-1">
-          {availableFiles
-            .filter((f) => f !== (selectedFile ?? ''))
-            .map((name) => (
-              <li key={name}>
-                <button
-                  onClick={() => fetchIndexAndMaybeData(name)}
-                  className="w-full text-left px-3 py-2 rounded-md text-sm transition-colors bg-white dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200"
-                  title={`Open ${name}`}
-                  aria-label={`Open ${name}`}
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="w-16 h-12 bg-gray-200 dark:bg-gray-600 rounded-md flex-shrink-0" />
-                    <div className="min-w-0">
-                      <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">{name}</div>
-                      <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Author A, Author B</div>
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        <span className="text-[10px] px-2 py-0.5 rounded bg-gray-100 text-gray-700 dark:bg-gray-600 dark:text-gray-200">badge</span>
-                        <span className="text-[10px] px-2 py-0.5 rounded bg-gray-100 text-gray-700 dark:bg-gray-600 dark:text-gray-200">badge</span>
-                        <span className="text-[10px] px-2 py-0.5 rounded bg-gray-100 text-gray-700 dark:bg-gray-600 dark:text-gray-200">badge</span>
-                      </div>
-                    </div>
-                  </div>
-                </button>
-              </li>
-            ))}
-        </ul>
-        {availableFiles.filter((f) => f !== (selectedFile ?? '')).length === 0 && (
-          <p className="text-sm text-gray-500 dark:text-gray-400">No other preloaded papers found. Add more JSON files to <span className="font-mono">preloaded_papers/</span>.</p>
-        )}
-      </aside>
+        </div>
+      </div>
     </div>
   );
 }
