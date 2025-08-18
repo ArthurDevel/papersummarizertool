@@ -4,7 +4,7 @@ You must extract two types of information:
 1.  **Headers**: Identify all section and subsection titles in the document. For each header, provide its title, hierarchical level (e.g., 1 for a main section, 2 for a subsection), and the page number where it appears.
 2.  **Asset Mentions**: Scan the text and identify all mentions of figures and tables (e.g., "as shown in Figure 1", "see Table 2"). For each mention, record its unique identifier (e.g., "Figure 1", "Table 2") and the page number where the mention occurs.
 
-Please provide the output as a single, valid JSON object with two keys: `headers` and `asset_mentions`.
+Please provide the output as a single, valid JSON object with two keys: `headers` and `asset_mentions`. All text should be regularly cased (no all caps except if it is part of a name / abbreviation!)
 
 **JSON Schema:**
 ```json
