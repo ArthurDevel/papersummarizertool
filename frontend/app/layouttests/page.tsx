@@ -58,21 +58,20 @@ export default function LayoutTestsPage() {
     if (!container) return;
 
     const computeActive = () => {
-      const containerTop = container.getBoundingClientRect().top;
+      const anchorY = 72; // approx navbar + padding
       let bestId: string | null = null;
       let bestDelta = Number.POSITIVE_INFINITY;
       paperData.sections.forEach((_, idx) => {
         const id = `sec-${idx}`;
         const el = sectionRefs.current[id];
         if (!el) return;
-        const rect = el.getBoundingClientRect();
-        const delta = Math.abs(rect.top - containerTop - 16);
+        const delta = Math.abs(el.getBoundingClientRect().top - anchorY);
         if (delta < bestDelta) {
           bestDelta = delta;
           bestId = id;
         }
       });
-      if (bestId !== activeSectionId) setActiveSectionId(bestId);
+      if (bestId && bestId !== activeSectionId) setActiveSectionId(bestId);
     };
 
     const computeFooter = () => {
