@@ -6,6 +6,14 @@ import { Paper, Section, Figure, Table } from '../types/paper';
 import { Loader } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+
+// Minimal approach: convert backticked segments that look like TeX into $...$
+const preprocessBacktickedMath = (src: string): string => {
+  const looksMath = (s: string) => /[{}_^\\]|\\[a-zA-Z]+/.test(s);
+  return (src || '').replace(/`([^`]+)`/g, (m, inner) => (looksMath(inner) ? `$${inner}$` : m));
+};
 
 export default function LayoutTestsPage() {
   const searchParams = useSearchParams();
@@ -119,8 +127,11 @@ export default function LayoutTestsPage() {
       )}
       {section.rewritten_content && (
         <div className="mt-2">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>
-            {section.rewritten_content}
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm, remarkMath]}
+            rehypePlugins={[[rehypeKatex, { strict: false, throwOnError: false }]]}
+          >
+            {preprocessBacktickedMath(section.rewritten_content || '')}
           </ReactMarkdown>
         </div>
       )}

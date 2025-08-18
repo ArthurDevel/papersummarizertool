@@ -1,6 +1,8 @@
 import './globals.css';
 import NavBar from '../components/NavBar';
 import Footer from '../components/Footer';
+import { Suspense } from 'react';
+import 'katex/dist/katex.min.css';
 
 export const metadata = {
   title: 'Next.js',
@@ -16,7 +18,9 @@ export default function RootLayout({
     <html lang="en">
       <body className="min-h-screen flex flex-col bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100" style={{ backgroundImage: 'radial-gradient(#D1D5DB 1px, transparent 1px)', backgroundSize: '24px 24px' }}>
         <NavBar />
-        <div className="flex-1 min-h-0">{children}</div>
+        <Suspense fallback={<div className="flex-1 min-h-0" />}>
+          <div className="flex-1 min-h-0">{children}</div>
+        </Suspense>
         <Footer />
       </body>
     </html>

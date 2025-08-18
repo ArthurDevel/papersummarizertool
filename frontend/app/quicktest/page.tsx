@@ -6,6 +6,13 @@ import { Paper, Section, Figure, Table } from '../../types/paper';
 import { ChevronDown, Loader, UploadCloud, FileText, Download } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+
+const preprocessBacktickedMath = (src: string): string => {
+  const looksMath = (s: string) => /[{}_^\\]|\\[a-zA-Z]+/.test(s);
+  return (src || '').replace(/`([^`]+)`/g, (m, inner) => (looksMath(inner) ? `$${inner}$` : m));
+};
 
 export default function QuickTestPage() {
   const [file, setFile] = useState<File | null>(null);
@@ -105,8 +112,8 @@ export default function QuickTestPage() {
       )}
       {section.rewritten_content && (
         <div className="mt-2">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>
-            {section.rewritten_content}
+          <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[[rehypeKatex, { strict: false, throwOnError: false }]]}>
+            {preprocessBacktickedMath(section.rewritten_content || '')}
           </ReactMarkdown>
         </div>
       )}
@@ -248,7 +255,14 @@ export default function QuickTestPage() {
                       <div className="space-y-6">
                         {paperData.sections.map((section: Section) => (
                           <div key={section.section_title} className="border dark:border-gray-700 rounded-lg p-4">
-                            {renderRewrittenSectionContent(section)}
+                            {(() => {
+                              const converted = preprocessBacktickedMath(section.rewritten_content || '');
+                              return (
+                                <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[[rehypeKatex, { strict: false, throwOnError: false }]]}>
+                                  {converted}
+                                </ReactMarkdown>
+                              );
+                            })()}
                           </div>
                         ))}
                       </div>
