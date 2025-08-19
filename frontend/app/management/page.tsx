@@ -57,8 +57,56 @@ export default function ManagementPage() {
   }, []);
 
   const onImportJson = () => {
-    // TODO: wire to backend route; placeholder action
-    alert('Import JSON clicked');
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json,application/json';
+    input.onchange = async () => {
+      if (!input.files || input.files.length === 0) return;
+      const file = input.files[0];
+      try {
+        setIsLoading(true);
+        setError(null);
+        const text = await file.text();
+        // Validate JSON locally first
+        JSON.parse(text);
+        const res = await fetch('/layouttests/data', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: text,
+        });
+        const payload = await res.json();
+        if (!res.ok) throw new Error(payload?.error || `Upload failed (${res.status})`);
+        // Refresh list
+        const listRes = await fetch('/layouttests/data', { cache: 'no-store' });
+        const listJson = await listRes.json();
+        const files: string[] = Array.isArray(listJson?.files) ? listJson.files : [];
+        const items: ListItem[] = await Promise.all(
+          files.map(async (f) => {
+            try {
+              const detailRes = await fetch(`/layouttests/data?file=${encodeURIComponent(f)}`, { cache: 'no-store' });
+              if (!detailRes.ok) throw new Error('detail fetch failed');
+              const json = await detailRes.json();
+              const usage = json?.usage_summary;
+              return {
+                id: f.replace(/\.json$/i, ''),
+                title: f,
+                total_cost: typeof usage?.total_cost === 'number' ? usage.total_cost : undefined,
+                total_tokens: typeof usage?.total_tokens === 'number' ? usage.total_tokens : undefined,
+                processing_time_seconds: typeof json?.processing_time_seconds === 'number' ? json.processing_time_seconds : undefined,
+              } as ListItem;
+            } catch {
+              return { id: f.replace(/\.json$/i, ''), title: f } as ListItem;
+            }
+          })
+        );
+        setPapers(items);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Invalid JSON file');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    input.click();
   };
 
   const onAddArxiv = () => {
@@ -120,12 +168,35 @@ export default function ManagementPage() {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{p.id}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
-                    <a
-                      className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
-                      href={`/layouttests?file=${encodeURIComponent(p.title)}`}
-                    >
-                      View
-                    </a>
+                    <div className="flex items-center gap-3 justify-end">
+                      <a
+                        className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+                        href={`/?file=${encodeURIComponent(p.title)}`}
+                      >
+                        View
+                      </a>
+                      <button
+                        className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300"
+                        onClick={async () => {
+                          try {
+                            if (!confirm(`Delete ${p.title}? This cannot be undone.`)) return;
+                            setIsLoading(true);
+                            setError(null);
+                            const res = await fetch(`/layouttests/data?file=${encodeURIComponent(p.title)}`, { method: 'DELETE' });
+                            const payload = await res.json().catch(() => ({}));
+                            if (!res.ok) throw new Error(payload?.error || `Delete failed (${res.status})`);
+                            // Remove from state
+                            setPapers((prev) => prev.filter((x) => x.id !== p.id));
+                          } catch (e) {
+                            setError(e instanceof Error ? e.message : 'Failed to delete');
+                          } finally {
+                            setIsLoading(false);
+                          }
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

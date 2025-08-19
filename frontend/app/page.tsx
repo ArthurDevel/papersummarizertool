@@ -50,7 +50,7 @@ export default function LayoutTestsPage() {
       const files: string[] = Array.isArray(indexJson?.files) ? indexJson.files : [];
       setAvailableFiles(files);
       const fileToLoad = explicitFile ?? selectedFile ?? files[0] ?? null;
-      if (!fileToLoad) throw new Error('No preloaded papers found in preloaded_papers/');
+      if (!fileToLoad) throw new Error('No papers found in data/paperjsons/');
       setSelectedFile(fileToLoad);
       const response = await fetch(`/layouttests/data?file=${encodeURIComponent(fileToLoad)}`, { signal: controller.signal, cache: 'no-store' });
       if (!response.ok) {
@@ -499,7 +499,7 @@ export default function LayoutTestsPage() {
                   ))}
               </ul>
               {availableFiles.filter((f) => f !== (selectedFile ?? '')).length === 0 && (
-                <p className="text-sm text-gray-500 dark:text-gray-400">No other preloaded papers found. Add more JSON files to <span className="font-mono">preloaded_papers/</span>.</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">No other preloaded papers found. Add more JSON files to <span className="font-mono">data/paperjsons/</span>.</p>
               )}
           </div>
         </div>
