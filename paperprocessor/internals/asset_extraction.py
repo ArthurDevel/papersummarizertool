@@ -157,7 +157,10 @@ class AssetExtractor:
                     "type": asset_type,
                     "page": page_num + 1,
                     "image_bytes": img_bytes,
-                    "bounding_box": [x1, y1, x2, y2]
+                    "bounding_box": [x1, y1, x2, y2],
+                    # Dimensions of the image coordinate space for bounding_box
+                    # (width, height) corresponding to the pixmap at dpi=200
+                    "source_image_size": [int(img_bgr.shape[1]), int(img_bgr.shape[0])]
                 })
 
         doc.close()

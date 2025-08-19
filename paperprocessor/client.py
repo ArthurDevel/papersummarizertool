@@ -148,13 +148,32 @@ class PaperProcessorClient:
         # Sanitize the identifier for use in a filename
         safe_identifier = re.sub(r'[^a-zA-Z0-9_-]+', '_', identifier)
 
+        # Compute bounding box scaled to the resized page image dimensions
+        bbox = asset_info.get("bounding_box") or [0, 0, 0, 0]
+        src_w, src_h = (asset_info.get("source_image_size") or [1, 1])
+        page_img = all_images[location_page - 1]
+        resized_w, resized_h = page_img.size
+        try:
+            scale_x = resized_w / float(src_w)
+            scale_y = resized_h / float(src_h)
+            scaled_bbox = [
+                int(round(bbox[0] * scale_x)),
+                int(round(bbox[1] * scale_y)),
+                int(round(bbox[2] * scale_x)),
+                int(round(bbox[3] * scale_y)),
+            ]
+        except Exception:
+            scaled_bbox = [0, 0, 0, 0]
+
         return {
             f"{asset_type.lower()}_identifier": identifier,
             "location_page": location_page,
             "explanation": explanation_response.get("explanation", "Could not generate explanation."),
             "image_path": f"page_{location_page}_{safe_identifier}.png",
             "image_data_url": f"data:image/png;base64,{asset_image_base64}",
-            "referenced_on_pages": sorted(list(mention_pages))
+            "referenced_on_pages": sorted(list(mention_pages)),
+            "bounding_box": scaled_bbox,
+            "page_image_size": [resized_w, resized_h],
         }
 
     async def _explain_assets(self, assets: List[Dict[str, Any]], asset_mentions: List[Dict[str, Any]], all_images: List[Image.Image], toc: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
@@ -276,12 +295,22 @@ class PaperProcessorClient:
             first_section = sorted(processed_toc, key=lambda x: x['start_page'])[0]
             title = first_section.get('section_title', title)
 
+        # Encode each (already resized) page image as a base64 data URL (PNG)
+        pages = [
+            {
+                "page_number": index + 1,
+                "image_data_url": f"data:image/png;base64,{self._image_to_base64(img)}",
+            }
+            for index, img in enumerate(images)
+        ]
+
         final_result = {
             "paper_id": "temp_id", # This should be properly generated or passed in
             "title": title,
             "sections": processed_toc,
             "tables": asset_explanations["tables"],
-            "figures": asset_explanations["figures"]
+            "figures": asset_explanations["figures"],
+            "pages": pages,
         }
 
         logging.info("Paper processing pipeline finished.")

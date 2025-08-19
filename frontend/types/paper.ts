@@ -5,6 +5,13 @@ export interface Figure {
   image_path: string;
   image_data_url: string;
   referenced_on_pages: number[];
+  bounding_box: [number, number, number, number];
+  page_image_size: [number, number];
+}
+
+export interface Page {
+  page_number: number;
+  image_data_url: string;
 }
 
 export interface Table {
@@ -14,6 +21,8 @@ export interface Table {
   image_path: string;
   image_data_url: string;
   referenced_on_pages: number[];
+  bounding_box: [number, number, number, number];
+  page_image_size: [number, number];
 }
 
 export interface Section {
@@ -32,6 +41,7 @@ export interface Paper {
   sections: Section[];
   tables: Table[];
   figures: Figure[];
+  pages: Page[];
 }
 
 export interface JobStatusResponse {
