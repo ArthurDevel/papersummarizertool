@@ -282,7 +282,7 @@ class PaperProcessorClient:
         logging.info("Finished processing all top-level sections.")
         return toc
 
-    async def process_paper_pdf(self, pdf_contents: bytes) -> Dict[str, Any]:
+    async def process_paper_pdf(self, pdf_contents: bytes, paper_id: str | None = None) -> Dict[str, Any]:
         """
         Processes a PDF file through the multi-step pipeline.
         """
@@ -376,7 +376,7 @@ class PaperProcessorClient:
         processing_time_seconds = max(0.0, time.perf_counter() - _t0)
 
         final_result = {
-            "paper_id": "temp_id", # This should be properly generated or passed in
+            "paper_id": paper_id or "temp_id",
             "title": title,
             "sections": processed_toc,
             "tables": asset_explanations["tables"],
@@ -392,8 +392,8 @@ class PaperProcessorClient:
 # Global instance for the application to use
 paper_processor_client = PaperProcessorClient()
 
-async def process_paper_pdf(pdf_contents: bytes) -> Dict[str, Any]:
+async def process_paper_pdf(pdf_contents: bytes, paper_id: str | None = None) -> Dict[str, Any]:
     """
     Processes a PDF file by calling the global paper processor client.
     """
-    return await paper_processor_client.process_paper_pdf(pdf_contents)
+    return await paper_processor_client.process_paper_pdf(pdf_contents, paper_id)

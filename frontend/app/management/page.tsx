@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from 'react';
+import { listPapers, type JobDbStatus } from '../../services/api';
 
 type ListItem = {
   id: string;
@@ -13,14 +14,19 @@ type ListItem = {
 
 export default function ManagementPage() {
   const [papers, setPapers] = useState<ListItem[]>([]);
+  const [dbPapers, setDbPapers] = useState<JobDbStatus[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [openMenuUuid, setOpenMenuUuid] = useState<string | null>(null);
 
   useEffect(() => {
     const load = async () => {
       try {
         setIsLoading(true);
         setError(null);
+        // Load DB-backed papers list
+        const dbList = await listPapers();
+        setDbPapers(dbList);
         // List from preloaded files and enrich each with summary fields
         const res = await fetch('/layouttests/data', { cache: 'no-store' });
         if (!res.ok) throw new Error(`Failed to list: ${res.status}`);
@@ -109,10 +115,32 @@ export default function ManagementPage() {
     input.click();
   };
 
-  const onAddArxiv = () => {
-    // TODO: wire to backend route; placeholder action
+  const onAddArxiv = async () => {
     const url = prompt('Enter arXiv URL (e.g., https://arxiv.org/abs/xxxx.xxxxx)');
-    if (url) alert(`Add arXiv URL: ${url}`);
+    if (!url) return;
+    try {
+      setIsLoading(true);
+      setError(null);
+      const res = await fetch('/api/papers/enqueue_arxiv', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ url }),
+      });
+      const payload = await res.json();
+      if (!res.ok) throw new Error(payload?.detail || 'Failed to enqueue');
+      alert(`Enqueued. Paper UUID: ${payload.paper_uuid}. It will appear once processed.`);
+      // Refresh DB list
+      const dbList = await listPapers();
+      setDbPapers(dbList);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to enqueue');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const toggleMenu = (uuid: string) => {
+    setOpenMenuUuid((prev) => (prev === uuid ? null : uuid));
   };
 
   return (
@@ -144,72 +172,210 @@ export default function ManagementPage() {
       {isLoading ? (
         <div>Loading…</div>
       ) : (
-        <div className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-sm overflow-hidden">
-          <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-            <thead className="bg-gray-50 dark:bg-gray-700/50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Title</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">ID</th>
-                <th className="px-6 py-3" />
-              </tr>
-            </thead>
-            <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-              {papers.map((p) => (
-                <tr key={p.id}>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                    <div className="flex flex-col">
-                      <span>{p.title}</span>
-                      <span className="text-xs text-gray-500 dark:text-gray-400">
-                        {typeof p.total_cost === 'number' ? `Cost: $${p.total_cost.toFixed(4)}` : 'Cost: N/A'}
-                        {typeof p.total_tokens === 'number' ? ` • Tokens: ${p.total_tokens}` : ''}
-                        {typeof p.processing_time_seconds === 'number' ? ` • Time: ${p.processing_time_seconds.toFixed(2)}s` : ''}
-                      </span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{p.id}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
-                    <div className="flex items-center gap-3 justify-end">
-                      <a
-                        className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
-                        href={`/?file=${encodeURIComponent(p.title)}`}
-                      >
-                        View
-                      </a>
-                      <button
-                        className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300"
-                        onClick={async () => {
-                          try {
-                            if (!confirm(`Delete ${p.title}? This cannot be undone.`)) return;
-                            setIsLoading(true);
-                            setError(null);
-                            const res = await fetch(`/layouttests/data?file=${encodeURIComponent(p.title)}`, { method: 'DELETE' });
-                            const payload = await res.json().catch(() => ({}));
-                            if (!res.ok) throw new Error(payload?.error || `Delete failed (${res.status})`);
-                            // Remove from state
-                            setPapers((prev) => prev.filter((x) => x.id !== p.id));
-                          } catch (e) {
-                            setError(e instanceof Error ? e.message : 'Failed to delete');
-                          } finally {
-                            setIsLoading(false);
-                          }
-                        }}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {papers.length === 0 && (
-                <tr>
-                  <td colSpan={3} className="px-6 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
-                    No papers found.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+        <>
+          <div className="mb-6 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-sm">
+            <div className="px-6 py-3 text-sm font-semibold border-b border-gray-200 dark:border-gray-700">Papers (Database)</div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                <thead className="bg-gray-50 dark:bg-gray-700/50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">ArXiv ID</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Paper UUID</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Status</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Pages</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Proc. Time (s)</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Total Cost ($)</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Avg/Page ($)</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">ArXiv Abs</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">ArXiv PDF</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Created</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Started</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Finished</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Error</th>
+                    <th className="px-6 py-3" />
+                  </tr>
+                </thead>
+                <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                  {dbPapers.map((r) => (
+                    <tr key={r.paper_uuid}>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">{r.arxiv_id}{r.arxiv_version || ''}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{r.paper_uuid}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">{r.status}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">{r.num_pages ?? '-'}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">{typeof r.processing_time_seconds === 'number' ? r.processing_time_seconds.toFixed(2) : '-'}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">{typeof r.total_cost === 'number' ? r.total_cost.toFixed(4) : '-'}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">{typeof r.avg_cost_per_page === 'number' ? r.avg_cost_per_page.toFixed(5) : '-'}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        <a
+                          className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+                          href={`https://arxiv.org/abs/${r.arxiv_id}${r.arxiv_version || ''}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          Abs
+                        </a>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        <a
+                          className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+                          href={`https://arxiv.org/pdf/${r.arxiv_id}${r.arxiv_version || ''}.pdf`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          PDF
+                        </a>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{r.created_at}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{r.started_at || '-'}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{r.finished_at || '-'}</td>
+                      <td className="px-6 py-4 text-sm text-red-600 dark:text-red-400 max-w-xs truncate" title={r.error_message || ''}>{r.error_message || ''}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm relative">
+                        <button
+                          className="px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
+                          onClick={() => toggleMenu(r.paper_uuid)}
+                          aria-label="Actions"
+                          title="Actions"
+                        >
+                          ⋮
+                        </button>
+                        {openMenuUuid === r.paper_uuid && (
+                          <div className="absolute right-0 mt-2 w-40 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-10">
+                            <button
+                              className="block w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
+                              onClick={async () => {
+                                try {
+                                  setIsLoading(true);
+                                  setError(null);
+                                  const res = await fetch(`/api/papers/${encodeURIComponent(r.paper_uuid)}/restart`, { method: 'POST' });
+                                  if (!res.ok) {
+                                    const payload = await res.json().catch(() => ({}));
+                                    throw new Error(payload?.detail || `Restart failed (${res.status})`);
+                                  }
+                                  const dbList = await listPapers();
+                                  setDbPapers(dbList);
+                                } catch (e) {
+                                  setError(e instanceof Error ? e.message : 'Failed to restart');
+                                } finally {
+                                  setIsLoading(false);
+                                  setOpenMenuUuid(null);
+                                }
+                              }}
+                            >
+                              Restart
+                            </button>
+                            <button
+                              className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30"
+                              onClick={async () => {
+                                try {
+                                  if (!confirm('Delete this paper? This will also delete the JSON file.')) return;
+                                  setIsLoading(true);
+                                  setError(null);
+                                  const res = await fetch(`/api/papers/${encodeURIComponent(r.paper_uuid)}`, { method: 'DELETE' });
+                                  if (!res.ok) {
+                                    const payload = await res.json().catch(() => ({}));
+                                    throw new Error(payload?.detail || `Delete failed (${res.status})`);
+                                  }
+                                  const dbList = await listPapers();
+                                  setDbPapers(dbList);
+                                  // Also proactively remove local JSON from the local table if present
+                                  setPapers((prev) => prev.filter((x) => x.id !== r.paper_uuid));
+                                } catch (e) {
+                                  setError(e instanceof Error ? e.message : 'Failed to delete');
+                                } finally {
+                                  setIsLoading(false);
+                                  setOpenMenuUuid(null);
+                                }
+                              }}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                  {dbPapers.length === 0 && (
+                    <tr>
+                      <td colSpan={13} className="px-6 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
+                        No papers found in database.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-sm">
+            <div className="px-6 py-3 text-sm font-semibold border-b border-gray-200 dark:border-gray-700">Local JSON Files</div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                <thead className="bg-gray-50 dark:bg-gray-700/50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Title</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">ID</th>
+                    <th className="px-6 py-3" />
+                  </tr>
+                </thead>
+                <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                  {papers.map((p) => (
+                    <tr key={p.id}>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                        <div className="flex flex-col">
+                          <span>{p.title}</span>
+                          <span className="text-xs text-gray-500 dark:text-gray-400">
+                            {typeof p.total_cost === 'number' ? `Cost: $${p.total_cost.toFixed(4)}` : 'Cost: N/A'}
+                            {typeof p.total_tokens === 'number' ? ` • Tokens: ${p.total_tokens}` : ''}
+                            {typeof p.processing_time_seconds === 'number' ? ` • Time: ${p.processing_time_seconds.toFixed(2)}s` : ''}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{p.id}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
+                        <div className="flex items-center gap-3 justify-end">
+                          <a
+                            className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+                            href={`/?file=${encodeURIComponent(p.title)}`}
+                          >
+                            View
+                          </a>
+                          <button
+                            className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300"
+                            onClick={async () => {
+                              try {
+                                if (!confirm(`Delete ${p.title}? This cannot be undone.`)) return;
+                                setIsLoading(true);
+                                setError(null);
+                                const res = await fetch(`/layouttests/data?file=${encodeURIComponent(p.title)}`, { method: 'DELETE' });
+                                const payload = await res.json().catch(() => ({}));
+                                if (!res.ok) throw new Error(payload?.error || `Delete failed (${res.status})`);
+                                // Remove from state
+                                setPapers((prev) => prev.filter((x) => x.id !== p.id));
+                              } catch (e) {
+                                setError(e instanceof Error ? e.message : 'Failed to delete');
+                              } finally {
+                                setIsLoading(false);
+                              }
+                            }}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {papers.length === 0 && (
+                    <tr>
+                      <td colSpan={3} className="px-6 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
+                        No papers found.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
       )}
     </div>
   );
