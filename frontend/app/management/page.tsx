@@ -6,6 +6,9 @@ type ListItem = {
   id: string;
   title: string;
   created_at?: string;
+  total_cost?: number;
+  total_tokens?: number;
+  processing_time_seconds?: number;
 };
 
 export default function ManagementPage() {
@@ -18,12 +21,31 @@ export default function ManagementPage() {
       try {
         setIsLoading(true);
         setError(null);
-        // Placeholder: list from preloaded files for now
+        // List from preloaded files and enrich each with summary fields
         const res = await fetch('/layouttests/data', { cache: 'no-store' });
         if (!res.ok) throw new Error(`Failed to list: ${res.status}`);
         const data = await res.json();
         const files: string[] = Array.isArray(data?.files) ? data.files : [];
-        const items: ListItem[] = files.map((f) => ({ id: f.replace(/\.json$/i, ''), title: f }));
+        // Fetch each JSON to extract summary fields (best effort)
+        const items: ListItem[] = await Promise.all(
+          files.map(async (f) => {
+            try {
+              const detailRes = await fetch(`/layouttests/data?file=${encodeURIComponent(f)}`, { cache: 'no-store' });
+              if (!detailRes.ok) throw new Error('detail fetch failed');
+              const json = await detailRes.json();
+              const usage = json?.usage_summary;
+              return {
+                id: f.replace(/\.json$/i, ''),
+                title: f,
+                total_cost: typeof usage?.total_cost === 'number' ? usage.total_cost : undefined,
+                total_tokens: typeof usage?.total_tokens === 'number' ? usage.total_tokens : undefined,
+                processing_time_seconds: typeof json?.processing_time_seconds === 'number' ? json.processing_time_seconds : undefined,
+              } as ListItem;
+            } catch {
+              return { id: f.replace(/\.json$/i, ''), title: f } as ListItem;
+            }
+          })
+        );
         setPapers(items);
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Unknown error');
@@ -86,7 +108,16 @@ export default function ManagementPage() {
             <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
               {papers.map((p) => (
                 <tr key={p.id}>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">{p.title}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                    <div className="flex flex-col">
+                      <span>{p.title}</span>
+                      <span className="text-xs text-gray-500 dark:text-gray-400">
+                        {typeof p.total_cost === 'number' ? `Cost: $${p.total_cost.toFixed(4)}` : 'Cost: N/A'}
+                        {typeof p.total_tokens === 'number' ? ` • Tokens: ${p.total_tokens}` : ''}
+                        {typeof p.processing_time_seconds === 'number' ? ` • Time: ${p.processing_time_seconds.toFixed(2)}s` : ''}
+                      </span>
+                    </div>
+                  </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{p.id}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
                     <a

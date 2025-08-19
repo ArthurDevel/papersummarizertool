@@ -105,6 +105,9 @@ export default function QuickTestPage() {
     URL.revokeObjectURL(url);
   };
   
+  const formatCurrency = (n?: number) => (typeof n === 'number' ? `$${n.toFixed(4)}` : 'N/A');
+  const formatSeconds = (s?: number) => (typeof s === 'number' ? `${s.toFixed(2)}s` : 'N/A');
+  
   const renderRewrittenSectionContent = (section: Section) => (
     <div key={section.section_title} className="prose dark:prose-invert max-w-none mb-6 last:mb-0">
       {!section.rewritten_content && section.level === 1 && (
@@ -203,6 +206,26 @@ export default function QuickTestPage() {
                   <div>
                     <h1 className="text-3xl font-bold mb-2">{paperData.title}</h1>
                     <p className="text-sm text-gray-500 dark:text-gray-400">Paper ID: {paperData.paper_id}</p>
+                    {(paperData.usage_summary || typeof paperData.processing_time_seconds === 'number') && (
+                      <div className="mt-2 text-xs text-gray-600 dark:text-gray-300 flex flex-wrap gap-3">
+                        {paperData.usage_summary && (
+                          <>
+                            <span className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded">
+                              <span>Total Cost:</span>
+                              <strong>{formatCurrency(paperData.usage_summary.total_cost)}</strong>
+                            </span>
+                            <span className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded">
+                              <span>Total Tokens:</span>
+                              <strong>{paperData.usage_summary.total_tokens}</strong>
+                            </span>
+                          </>
+                        )}
+                        <span className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded">
+                          <span>Processing Time:</span>
+                          <strong>{formatSeconds(paperData.processing_time_seconds)}</strong>
+                        </span>
+                      </div>
+                    )}
                   </div>
                   <button
                     onClick={exportPaperAsJson}

@@ -4,7 +4,7 @@ import base64
 import io
 import logging
 
-from shared.services.openrouter_service import openrouter_service
+from shared.openrouter import client as openrouter
 from paperprocessor.internals.prompt_loader import load_prompt
 
 logger = logging.getLogger(__name__)
@@ -37,11 +37,12 @@ async def extract_initial_content(images: List[Image.Image]) -> Dict[str, Any]:
             for img in images
         ]
 
-        response = await openrouter_service.get_multimodal_json_response(
+        result = await openrouter.get_multimodal_json_response(
             system_prompt=system_prompt,
             user_prompt_parts=user_prompt_parts,
             model="anthropic/claude-3.5-sonnet"
         )
+        response = result.parsed_json
         
         logger.info("Successfully extracted initial content.")
         # Basic validation

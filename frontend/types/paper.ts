@@ -42,6 +42,21 @@ export interface Paper {
   tables: Table[];
   figures: Figure[];
   pages: Page[];
+  usage_summary?: {
+    currency: 'USD';
+    total_cost: number;
+    total_prompt_tokens: number;
+    total_completion_tokens: number;
+    total_tokens: number;
+    by_model: Record<string, {
+      num_calls: number;
+      total_cost: number;
+      prompt_tokens: number;
+      completion_tokens: number;
+      total_tokens: number;
+    }>;
+  };
+  processing_time_seconds?: number;
 }
 
 export interface JobStatusResponse {

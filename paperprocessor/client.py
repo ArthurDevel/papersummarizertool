@@ -1,4 +1,5 @@
 import logging
+import time
 from typing import Dict, Any, List
 import os
 import io
@@ -11,7 +12,7 @@ import re
 
 from paperprocessor.internals.pdf_to_image import convert_pdf_to_images
 from paperprocessor.internals.asset_extraction import AssetExtractor
-from shared.services.openrouter_service import openrouter_service
+from shared.openrouter import client as openrouter
 from api.types.paper_processing_api_models import Paper
 
 
@@ -49,7 +50,7 @@ class PaperProcessorClient:
         return base64.b64encode(buffered.getvalue()).decode('utf-8')
 
     async def _extract_assets_and_mentions(
-        self, pdf_contents: bytes, images: List[Image.Image]
+        self, pdf_contents: bytes, images: List[Image.Image], usage_hook=None
     ) -> Dict[str, Any]:
         """
         Runs asset extraction and LLM-based content analysis concurrently.
@@ -73,17 +74,24 @@ class PaperProcessorClient:
             for img in images
         ]
         
-        llm_analysis_task = openrouter_service.get_multimodal_json_response(
+        llm_analysis_task = openrouter.get_multimodal_json_response(
             system_prompt=system_prompt,
             user_prompt_parts=user_prompt_parts,
             model="google/gemini-2.5-pro"
         )
 
         # Await both tasks
-        extracted_assets, llm_analysis = await asyncio.gather(
+        extracted_assets, llm_analysis_result = await asyncio.gather(
             extract_assets_task, llm_analysis_task
         )
 
+        if usage_hook:
+            try:
+                usage_hook(llm_analysis_result)
+            except Exception:
+                logging.exception("Failed to record usage for multimodal analysis")
+
+        llm_analysis = llm_analysis_result.parsed_json
         if "headers" not in llm_analysis or "asset_mentions" not in llm_analysis:
             raise ValueError("Invalid response format from content analysis LLM.")
 
@@ -94,23 +102,30 @@ class PaperProcessorClient:
             "asset_mentions": llm_analysis["asset_mentions"],
         }
 
-    async def _generate_toc(self, headers: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    async def _generate_toc(self, headers: List[Dict[str, Any]], usage_hook=None) -> List[Dict[str, Any]]:
         """Generates a hierarchical table of contents from a flat list of headers."""
         logging.info("Step 3: Generating Table of Contents.")
         system_prompt = self._load_prompt("2_generate_toc.md")
         user_prompt = json.dumps({"headers": headers})
 
-        response = await openrouter_service.get_json_response(
+        toc_result = await openrouter.get_json_response(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             model="google/gemini-2.5-pro"
         )
+        if usage_hook:
+            try:
+                usage_hook(toc_result)
+            except Exception:
+                logging.exception("Failed to record usage for ToC generation")
+        response = toc_result.parsed_json
         logging.info("Successfully generated Table of Contents.")
         if not isinstance(response, list):
-             raise ValueError("Invalid response format from ToC generation LLM. Expected a list.")
+            logging.warning("ToC generation returned non-list; continuing with empty ToC")
+            return []
         return response
 
-    async def _explain_asset(self, asset_info: Dict[str, Any], all_images: List[Image.Image], toc: List[Dict[str, Any]], asset_mentions: List[Dict[str, Any]]) -> Dict[str, Any]:
+    async def _explain_asset(self, asset_info: Dict[str, Any], all_images: List[Image.Image], toc: List[Dict[str, Any]], asset_mentions: List[Dict[str, Any]], usage_hook=None) -> Dict[str, Any]:
         """Explains a single asset by providing context images to an LLM."""
         identifier = asset_info["identifier"]
         asset_type = asset_info["type"]
@@ -139,11 +154,17 @@ class PaperProcessorClient:
             for p in pages_to_send
         ]
 
-        explanation_response = await openrouter_service.get_multimodal_json_response(
+        explanation_result = await openrouter.get_multimodal_json_response(
             system_prompt=system_prompt,
             user_prompt_parts=user_prompt_parts,
             model="google/gemini-2.5-pro"
         )
+        if usage_hook:
+            try:
+                usage_hook(explanation_result)
+            except Exception:
+                logging.exception("Failed to record usage for asset explanation")
+        explanation_response = explanation_result.parsed_json
 
         # Sanitize the identifier for use in a filename
         safe_identifier = re.sub(r'[^a-zA-Z0-9_-]+', '_', identifier)
@@ -176,12 +197,12 @@ class PaperProcessorClient:
             "page_image_size": [resized_w, resized_h],
         }
 
-    async def _explain_assets(self, assets: List[Dict[str, Any]], asset_mentions: List[Dict[str, Any]], all_images: List[Image.Image], toc: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+    async def _explain_assets(self, assets: List[Dict[str, Any]], asset_mentions: List[Dict[str, Any]], all_images: List[Image.Image], toc: List[Dict[str, Any]], usage_hook=None) -> Dict[str, List[Dict[str, Any]]]:
         """Generates explanations for all tables and figures."""
         logging.info("Step 4: Generating asset explanations.")
         
         tasks = [
-            self._explain_asset(asset, all_images, toc, asset_mentions) 
+            self._explain_asset(asset, all_images, toc, asset_mentions, usage_hook) 
             for asset in assets
         ]
         
@@ -193,7 +214,7 @@ class PaperProcessorClient:
         logging.info(f"Explained {len(tables)} tables and {len(figures)} figures.")
         return {"tables": tables, "figures": figures}
 
-    async def _process_section(self, section: Dict[str, Any], all_images: List[Image.Image]) -> Dict[str, Any]:
+    async def _process_section(self, section: Dict[str, Any], all_images: List[Image.Image], usage_hook=None) -> Dict[str, Any]:
         """Rewrites and summarizes a single section using its page images."""
         start_page = section["start_page"]
         end_page = section["end_page"]
@@ -214,30 +235,37 @@ class PaperProcessorClient:
         ]
         
         # Make two separate, non-blocking calls to the LLM
-        rewrite_task = openrouter_service.get_llm_response(
+        rewrite_task = openrouter.get_llm_response(
             messages=[{"role": "system", "content": rewrite_system_prompt}, {"role": "user", "content": user_prompt_parts}],
             model="google/gemini-2.5-pro"
         )
-        summary_task = openrouter_service.get_llm_response(
+        summary_task = openrouter.get_llm_response(
             messages=[{"role": "system", "content": summary_system_prompt}, {"role": "user", "content": user_prompt_parts}],
             model="google/gemini-2.5-pro"
         )
 
         rewrite_response, summary_response = await asyncio.gather(rewrite_task, summary_task)
 
+        if usage_hook:
+            try:
+                usage_hook(rewrite_response)
+                usage_hook(summary_response)
+            except Exception:
+                logging.exception("Failed to record usage for section processing")
+
         # Update the section object with the new content
-        section["rewritten_content"] = rewrite_response.get("choices", [{}])[0].get("message", {}).get("content", "")
-        section["summary"] = summary_response.get("choices", [{}])[0].get("message", {}).get("content", "")
+        section["rewritten_content"] = rewrite_response.response_text or ""
+        section["summary"] = summary_response.response_text or ""
 
         return section
 
-    async def _process_sections(self, toc: List[Dict[str, Any]], all_images: List[Image.Image]) -> List[Dict[str, Any]]:
+    async def _process_sections(self, toc: List[Dict[str, Any]], all_images: List[Image.Image], usage_hook=None) -> List[Dict[str, Any]]:
         """Processes all top-level sections to add rewritten content and summaries."""
         logging.info("Step 5: Processing all top-level sections.")
         
         # We only process top-level sections as per the plan
         tasks = [
-            self._process_section(section, all_images)
+            self._process_section(section, all_images, usage_hook)
             for section in toc if section.get("level") == 1
         ]
         
@@ -259,6 +287,7 @@ class PaperProcessorClient:
         Processes a PDF file through the multi-step pipeline.
         """
         logging.info("Paper processing pipeline started.")
+        _t0 = time.perf_counter()
         loop = asyncio.get_running_loop()
 
         # Step 1: PDF to Image Conversion (CPU-bound)
@@ -268,20 +297,60 @@ class PaperProcessorClient:
         )
 
         # Step 2: Extract assets and high-level content structure
-        extraction_result = await self._extract_assets_and_mentions(pdf_contents, images)
+        # Usage aggregation for this run
+        usage_summary: Dict[str, Any] = {
+            "currency": "USD",
+            "total_cost": 0.0,
+            "total_prompt_tokens": 0,
+            "total_completion_tokens": 0,
+            "total_tokens": 0,
+            "by_model": {}
+        }
+
+        def _record_usage(result: Any) -> None:
+            try:
+                model = getattr(result, "model", None)
+                prompt_tokens = getattr(result, "prompt_tokens", None) or 0
+                completion_tokens = getattr(result, "completion_tokens", None) or 0
+                total_tokens = getattr(result, "total_tokens", None) or (prompt_tokens + completion_tokens)
+                total_cost = getattr(result, "total_cost", None) or 0.0
+
+                usage_summary["total_prompt_tokens"] += prompt_tokens
+                usage_summary["total_completion_tokens"] += completion_tokens
+                usage_summary["total_tokens"] += total_tokens
+                usage_summary["total_cost"] += total_cost
+
+                if model:
+                    by_model = usage_summary["by_model"].setdefault(model, {
+                        "num_calls": 0,
+                        "total_cost": 0.0,
+                        "prompt_tokens": 0,
+                        "completion_tokens": 0,
+                        "total_tokens": 0,
+                    })
+                    by_model["num_calls"] += 1
+                    by_model["total_cost"] += total_cost
+                    by_model["prompt_tokens"] += prompt_tokens
+                    by_model["completion_tokens"] += completion_tokens
+                    by_model["total_tokens"] += total_tokens
+            except Exception:
+                logging.exception("Failed to accumulate usage")
+
+        extraction_result = await self._extract_assets_and_mentions(pdf_contents, images, _record_usage)
         
         # Step 3: Generate Table of Contents
-        toc = await self._generate_toc(extraction_result["headers"])
+        toc = await self._generate_toc(extraction_result["headers"], _record_usage)
 
         # Steps 4 & 5: Explain Assets and Process Sections (I/O-bound, run concurrently)
         asset_explanations_task = self._explain_assets(
             extraction_result["assets"],
             extraction_result["asset_mentions"],
             images,
-            toc
+            toc,
+            _record_usage
         )
         
-        processed_sections_task = self._process_sections(toc, images)
+        processed_sections_task = self._process_sections(toc, images, _record_usage)
 
         asset_explanations, processed_toc = await asyncio.gather(
             asset_explanations_task,
@@ -304,6 +373,8 @@ class PaperProcessorClient:
             for index, img in enumerate(images)
         ]
 
+        processing_time_seconds = max(0.0, time.perf_counter() - _t0)
+
         final_result = {
             "paper_id": "temp_id", # This should be properly generated or passed in
             "title": title,
@@ -311,6 +382,8 @@ class PaperProcessorClient:
             "tables": asset_explanations["tables"],
             "figures": asset_explanations["figures"],
             "pages": pages,
+            "usage_summary": usage_summary,
+            "processing_time_seconds": processing_time_seconds,
         }
 
         logging.info("Paper processing pipeline finished.")

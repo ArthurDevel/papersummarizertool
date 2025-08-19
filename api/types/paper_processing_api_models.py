@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, Dict
 from pydantic import BaseModel
 
 class Page(BaseModel):
@@ -34,6 +34,21 @@ class Section(BaseModel):
     summary: Optional[str] = None
     subsections: List['Section'] = []
 
+class UsageModelAggregate(BaseModel):
+    num_calls: int
+    total_cost: float
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+
+class UsageSummary(BaseModel):
+    currency: str = "USD"
+    total_cost: float
+    total_prompt_tokens: int
+    total_completion_tokens: int
+    total_tokens: int
+    by_model: Dict[str, UsageModelAggregate]
+
 class Paper(BaseModel):
     paper_id: str
     title: str
@@ -41,6 +56,8 @@ class Paper(BaseModel):
     tables: List[Table]
     figures: List[Figure]
     pages: List[Page]
+    usage_summary: Optional[UsageSummary] = None
+    processing_time_seconds: Optional[float] = None
 
 class JobStatusResponse(BaseModel):
     job_id: str
