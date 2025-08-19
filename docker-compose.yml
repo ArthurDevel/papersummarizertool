@@ -33,7 +33,7 @@ services:
     ports:
       - "${HOSTPORT_MYSQL:-3306}:${CONTAINERPORT_MYSQL:-3306}"
     volumes:
-      - mysql-data:/var/lib/mysql
+      - ./data/mysql:/var/lib/mysql
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
       interval: 10s
@@ -50,5 +50,4 @@ services:
       - qdrant-data:/qdrant/storage
 
 volumes:
-  mysql-data:
   qdrant-data: 
