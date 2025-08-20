@@ -1,4 +1,4 @@
-import { JobStatusResponse, Paper } from '../types/paper';
+import { JobStatusResponse, Paper, type MinimalPaperItem } from '../types/paper';
 
 export const API_URL = '/api'; // The backend is on port 8000, but we're proxying, see next.config.js
 
@@ -120,6 +120,15 @@ export const startProcessingRequested = async (arxivIdOrUrl: string): Promise<{ 
 export const deleteRequestedPaper = async (arxivIdOrUrl: string): Promise<{ deleted: string }> => {
     const encoded = encodeURIComponent(arxivIdOrUrl);
     const response = await fetch(`${API_URL}/requested_papers/${encoded}`, { method: 'DELETE' });
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+    }
+    return response.json();
+}
+
+export const listMinimalPapers = async (): Promise<MinimalPaperItem[]> => {
+    const response = await fetch(`${API_URL}/papers/minimal`);
     if (!response.ok) {
         const errorText = await response.text();
         throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);

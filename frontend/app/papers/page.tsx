@@ -2,9 +2,11 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
+import type { MinimalPaperItem } from '../../types/paper';
+import { listMinimalPapers } from '../../services/api';
 
 export default function AllPapersPage() {
-  const [items, setItems] = useState<Array<{ name: string; title: string | null; authors: string | null; thumbnail_data_url: string | null; slug: string | null }>>([]);
+  const [items, setItems] = useState<MinimalPaperItem[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -14,37 +16,7 @@ export default function AllPapersPage() {
       try {
         setIsLoading(true);
         setError(null);
-        const res = await fetch('/layouttests/data', { cache: 'no-store' });
-        if (!res.ok) throw new Error(`Failed to load list: ${res.status}`);
-        const data = await res.json();
-        if (!Array.isArray(data?.files)) throw new Error('Unexpected response');
-        const files: string[] = data.files;
-        // Enrich each file entry with title/authors/thumbnail from its JSON (best effort)
-        const enriched = await Promise.all(
-          files.map(async (name: string) => {
-            try {
-              const detailRes = await fetch(`/layouttests/data?file=${encodeURIComponent(name)}`, { cache: 'no-store' });
-              if (!detailRes.ok) throw new Error('detail fetch failed');
-              const json = await detailRes.json();
-              const title = typeof json?.title === 'string' ? json.title : null;
-              const authors = typeof json?.authors === 'string' ? json.authors : null;
-              const thumb = typeof json?.thumbnail_data_url === 'string' ? json.thumbnail_data_url : null;
-              // Resolve slug for this paper by UUID (filename without .json)
-              let slug: string | null = null;
-              try {
-                const uuid = name.replace(/\.json$/i, '');
-                const slugRes = await fetch(`/api/papers/${encodeURIComponent(uuid)}/slug`, { cache: 'no-store' });
-                if (slugRes.ok) {
-                  const payload = await slugRes.json();
-                  if (typeof payload?.slug === 'string') slug = payload.slug;
-                }
-              } catch {}
-              return { name, title, authors, thumbnail_data_url: thumb, slug } as { name: string; title: string | null; authors: string | null; thumbnail_data_url: string | null; slug: string | null };
-            } catch {
-              return { name, title: null, authors: null, thumbnail_data_url: null, slug: null } as { name: string; title: string | null; authors: string | null; thumbnail_data_url: string | null; slug: string | null };
-            }
-          })
-        );
+        const enriched: MinimalPaperItem[] = await listMinimalPapers();
         if (isMounted) setItems(enriched);
       } catch (e) {
         if (isMounted) setError(e instanceof Error ? e.message : 'Unknown error');
@@ -83,8 +55,8 @@ export default function AllPapersPage() {
           <div className="text-gray-600 dark:text-gray-300">No papers found. Add JSON files to <span className="font-mono">data/paperjsons/</span>.</div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {items.map(({ name, title, authors, thumbnail_data_url, slug }) => (
-              <Link key={name} href={slug ? `/paper/${encodeURIComponent(slug)}` : '#'} className={`group ${slug ? '' : 'pointer-events-none opacity-60'}`}>
+            {items.map(({ paper_uuid, title, authors, thumbnail_data_url, slug }) => (
+              <Link key={paper_uuid} href={slug ? `/paper/${encodeURIComponent(slug)}` : '#'} className={`group ${slug ? '' : 'pointer-events-none opacity-60'}`}>
                 <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden shadow-sm h-full">
                   <div className="w-full aspect-square bg-gray-100 dark:bg-gray-700 flex items-center justify-center overflow-hidden">
                     {thumbnail_data_url ? (
@@ -94,7 +66,7 @@ export default function AllPapersPage() {
                     )}
                   </div>
                   <div className="p-3">
-                    <div className="font-semibold text-gray-900 dark:text-gray-100 group-hover:underline break-words line-clamp-3">{title || name}</div>
+                    <div className="font-semibold text-gray-900 dark:text-gray-100 group-hover:underline break-words line-clamp-3">{title || paper_uuid + '.json'}</div>
                     {authors && (
                       <div className="text-xs text-gray-600 dark:text-gray-400 mt-1 break-words line-clamp-3">{authors}</div>
                     )}

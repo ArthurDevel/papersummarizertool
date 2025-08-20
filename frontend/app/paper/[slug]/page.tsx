@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { useParams } from 'next/navigation';
-import { Paper, Section, Figure, Table } from '../../../types/paper';
+import { Paper, Section, Figure, Table, type MinimalPaperItem } from '../../../types/paper';
+import { listMinimalPapers } from '../../../services/api';
 import { Loader, ExternalLink } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -22,7 +23,7 @@ export default function LayoutTestsPage() {
   const [error, setError] = useState<string | null>(null);
   const [availableFiles, setAvailableFiles] = useState<string[]>([]);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
-  const [similarItems, setSimilarItems] = useState<Array<{ name: string; title: string | null; authors: string | null; thumbnail_data_url: string | null; slug: string | null }>>([]);
+  const [similarItems, setSimilarItems] = useState<Array<{ key: string; title: string | null; authors: string | null; thumbnail_data_url: string | null; slug: string | null }>>([]);
   const abortRef = useRef<AbortController | null>(null);
   const mainRef = useRef<HTMLDivElement | null>(null);
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
@@ -105,7 +106,7 @@ export default function LayoutTestsPage() {
     };
   }, [params]);
 
-  // Load metadata for similar papers (title/authors/thumbnail)
+  // Load metadata for similar papers (title/authors/thumbnail) via minimal endpoint
   useEffect(() => {
     const others = availableFiles.filter((f) => f !== (selectedFile ?? ''));
     if (others.length === 0) {
@@ -114,31 +115,11 @@ export default function LayoutTestsPage() {
     }
     (async () => {
       try {
-        const results = await Promise.all(
-          others.map(async (name) => {
-            try {
-              const res = await fetch(`/layouttests/data?file=${encodeURIComponent(name)}`, { cache: 'no-store' });
-              if (!res.ok) throw new Error('detail fetch failed');
-              const json = await res.json();
-              const title = typeof json?.title === 'string' ? json.title : null;
-              const authors = typeof json?.authors === 'string' ? json.authors : null;
-              const thumb = typeof json?.thumbnail_data_url === 'string' ? json.thumbnail_data_url : null;
-              // Resolve slug for this paper by UUID (filename without .json)
-              let slug: string | null = null;
-              try {
-                const uuid = name.replace(/\.json$/i, '');
-                const slugRes = await fetch(`/api/papers/${encodeURIComponent(uuid)}/slug`, { cache: 'no-store' });
-                if (slugRes.ok) {
-                  const payload = await slugRes.json();
-                  if (typeof payload?.slug === 'string') slug = payload.slug;
-                }
-              } catch {}
-              return { name, title, authors, thumbnail_data_url: thumb, slug } as { name: string; title: string | null; authors: string | null; thumbnail_data_url: string | null; slug: string | null };
-            } catch {
-              return { name, title: null, authors: null, thumbnail_data_url: null, slug: null } as { name: string; title: string | null; authors: string | null; thumbnail_data_url: string | null; slug: string | null };
-            }
-          })
-        );
+        const all: MinimalPaperItem[] = await listMinimalPapers();
+        const othersByUuid = new Set(others.map((n) => n.replace(/\.json$/i, '')));
+        const results = all
+          .filter((it) => othersByUuid.has(it.paper_uuid))
+          .map((it) => ({ key: it.paper_uuid, title: it.title, authors: it.authors, thumbnail_data_url: it.thumbnail_data_url, slug: it.slug }));
         setSimilarItems(results);
       } catch {
         setSimilarItems([]);
@@ -570,15 +551,15 @@ export default function LayoutTestsPage() {
                 </div>
               )}
               <ul className="space-y-1">
-                {similarItems.map(({ name, title, authors, thumbnail_data_url, slug }) => {
-                  const target = slug || name.replace(/\.json$/i, '');
+                {similarItems.map(({ key, title, authors, thumbnail_data_url, slug }) => {
+                  const target = slug || key;
                   return (
-                    <li key={name}>
+                    <li key={key}>
                       <a
                         href={`/paper/${encodeURIComponent(target)}`}
                         className="block w-full text-left px-3 py-2 rounded-md text-sm transition-colors bg-white dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200"
-                        title={`Open ${name}`}
-                        aria-label={`Open ${name}`}
+                        title={`Open ${title || key}`}
+                        aria-label={`Open ${title || key}`}
                       >
                         <div className="flex items-start gap-3">
                           <div className="w-16 h-16 bg-gray-200 dark:bg-gray-600 rounded-md flex-shrink-0 overflow-hidden">
@@ -587,7 +568,7 @@ export default function LayoutTestsPage() {
                             )}
                           </div>
                           <div className="min-w-0">
-                            <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">{title || name}</div>
+                            <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">{title || key + '.json'}</div>
                             {authors && (
                               <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">{authors}</div>
                             )}

@@ -67,3 +67,11 @@ export interface JobStatusResponse {
   status: 'processing' | 'completed' | 'failed';
   result?: Paper; // The result is optional, as it's only present when the job is 'completed'
 } 
+
+export interface MinimalPaperItem {
+  paper_uuid: string;
+  title: string | null;
+  authors: string | null;
+  thumbnail_data_url: string | null;
+  slug: string | null;
+}

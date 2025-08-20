@@ -1,7 +1,7 @@
 import logging
 import os
 import sys
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from shared.config import settings
 import uvicorn
@@ -44,6 +44,42 @@ app.add_middleware(
 
 
 app.include_router(paper_processing_endpoints.router, tags=["paper-processing"])
+
+
+@app.on_event("startup")
+async def _log_registered_routes() -> None:
+    try:
+        logger.info("Registered routes (in order):")
+        for idx, route in enumerate(app.router.routes):
+            try:
+                methods = sorted(list(getattr(route, "methods", []) or []))
+                path = getattr(route, "path", str(route))
+                name = getattr(route, "name", "")
+                logger.info("%03d: %s %s name=%s", idx, ",".join(methods), path, name)
+            except Exception:
+                logger.exception("Failed to log route entry")
+    except Exception:
+        logger.exception("Failed to enumerate routes")
+
+
+@app.middleware("http")
+async def _log_request_and_match(request: Request, call_next):
+    try:
+        method = request.method
+        path = request.url.path
+        route = request.scope.get("route")
+        route_path = getattr(route, "path", None)
+        endpoint = request.scope.get("endpoint")
+        endpoint_name = getattr(endpoint, "__name__", None)
+        logger.info("REQ %s %s -> matched route=%s endpoint=%s", method, path, route_path, endpoint_name)
+    except Exception:
+        logger.exception("Logging request before call_next failed")
+    response = await call_next(request)
+    try:
+        logger.info("RESP %s %s status=%s", request.method, request.url.path, response.status_code)
+    except Exception:
+        logger.exception("Logging response failed")
+    return response
 
 
 @app.get("/")
