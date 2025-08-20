@@ -84,3 +84,44 @@ export const listPapers = async (status?: string): Promise<JobDbStatus[]> => {
     }
     return response.json();
 }
+
+export type RequestedPaper = {
+    arxiv_id: string;
+    arxiv_abs_url: string;
+    arxiv_pdf_url: string;
+    request_count: number;
+    first_requested_at: string;
+    last_requested_at: string;
+    title?: string | null;
+    authors?: string | null;
+    num_pages?: number | null;
+}
+
+export const listRequestedPapers = async (): Promise<RequestedPaper[]> => {
+    const response = await fetch(`${API_URL}/requested_papers`);
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+    }
+    return response.json();
+}
+
+export const startProcessingRequested = async (arxivIdOrUrl: string): Promise<{ paper_uuid: string; status: string; }> => {
+    const encoded = encodeURIComponent(arxivIdOrUrl);
+    const response = await fetch(`${API_URL}/requested_papers/${encoded}/start_processing`, { method: 'POST' });
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+    }
+    return response.json();
+}
+
+export const deleteRequestedPaper = async (arxivIdOrUrl: string): Promise<{ deleted: string }> => {
+    const encoded = encodeURIComponent(arxivIdOrUrl);
+    const response = await fetch(`${API_URL}/requested_papers/${encoded}`, { method: 'DELETE' });
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+    }
+    return response.json();
+}

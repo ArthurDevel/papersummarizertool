@@ -49,7 +49,15 @@ export default function AllPapersPage() {
   return (
     <main className="w-full">
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-        <h1 className="text-3xl font-bold mb-4">All Papers</h1>
+        <div className="mb-4 flex items-center justify-between">
+          <h1 className="text-3xl font-bold">All Papers</h1>
+          <Link
+            href="/requestpaper"
+            className="px-4 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700"
+          >
+            Request a paper
+          </Link>
+        </div>
         <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">Listing contents of <span className="font-mono">data/paperjsons/</span>.</p>
 
         {error && (

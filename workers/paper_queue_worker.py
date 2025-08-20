@@ -11,7 +11,7 @@ from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from shared.db import SessionLocal
-from api.models import PaperRow
+from api.models import PaperRow, RequestedPaperRow
 from shared.arxiv.client import fetch_pdf_for_processing
 from paperprocessor.client import process_paper_pdf
 
@@ -70,6 +70,14 @@ async def _process_one(job: PaperRow) -> None:
             j.title = result.get('title') if isinstance(result.get('title'), str) else None
             j.authors = result.get('authors') if isinstance(result.get('authors'), str) else None
             s.add(j)
+            # Mark corresponding request as processed (soft-delete)
+            try:
+                req = s.query(RequestedPaperRow).filter(RequestedPaperRow.arxiv_id == (j.arxiv_id)).first()
+                if req and not getattr(req, 'processed', False):
+                    req.processed = True
+                    s.add(req)
+            except Exception:
+                logger.exception("Failed to mark requested paper as processed for arxiv_id=%s", j.arxiv_id)
     except Exception as e:
         logger.exception("Job %s failed", job.id)
         with session_scope() as s:

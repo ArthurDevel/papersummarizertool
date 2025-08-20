@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from 'react';
-import { listPapers, type JobDbStatus } from '../../services/api';
+import { listPapers, listRequestedPapers, deleteRequestedPaper, type JobDbStatus, type RequestedPaper } from '../../services/api';
 
 type ListItem = {
   id: string;
@@ -15,6 +15,7 @@ type ListItem = {
 export default function ManagementPage() {
   const [papers, setPapers] = useState<ListItem[]>([]);
   const [dbPapers, setDbPapers] = useState<JobDbStatus[]>([]);
+  const [requested, setRequested] = useState<RequestedPaper[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [openMenuUuid, setOpenMenuUuid] = useState<string | null>(null);
@@ -27,6 +28,9 @@ export default function ManagementPage() {
         // Load DB-backed papers list
         const dbList = await listPapers();
         setDbPapers(dbList);
+        // Load requested papers
+        const requestedList = await listRequestedPapers();
+        setRequested(requestedList);
         // List from preloaded files and enrich each with summary fields
         const res = await fetch('/layouttests/data', { cache: 'no-store' });
         if (!res.ok) throw new Error(`Failed to list: ${res.status}`);
@@ -173,6 +177,94 @@ export default function ManagementPage() {
         <div>Loading…</div>
       ) : (
         <>
+          <div className="mb-6 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-sm">
+            <div className="px-6 py-3 text-sm font-semibold border-b border-gray-2 00 dark:border-gray-700">Requested Papers</div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                <thead className="bg-gray-50 dark:bg-gray-700/50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">arXiv ID</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Title</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Authors</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Pages</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Abs URL</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">PDF URL</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Requests</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">First</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Last</th>
+                    <th className="px-6 py-3" />
+                  </tr>
+                </thead>
+                <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                  {requested.map((r) => (
+                    <tr key={r.arxiv_id} className="relative">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">{r.arxiv_id}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm max-w-md truncate" title={r.title || ''}>{r.title || '-'}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm max-w-md truncate" title={r.authors || ''}>{r.authors || '-'}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">{typeof r.num_pages === 'number' ? r.num_pages : '-'}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        <a href={r.arxiv_abs_url} className="text-blue-600 hover:underline" target="_blank" rel="noopener noreferrer">Abs</a>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        <a href={r.arxiv_pdf_url} className="text-blue-600 hover:underline" target="_blank" rel="noopener noreferrer">PDF</a>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">{r.request_count}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{r.first_requested_at}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{r.last_requested_at}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
+                        <div className="inline-flex items-center gap-2">
+                          <button
+                            className="px-3 py-1 rounded-md border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700"
+                            onClick={async () => {
+                              try {
+                                setIsLoading(true);
+                                setError(null);
+                                // Start processing via API
+                                await fetch(`/api/requested_papers/${encodeURIComponent(r.arxiv_id)}/start_processing`, { method: 'POST' });
+                                // Refresh lists
+                                const [dbList, reqList] = await Promise.all([
+                                  listPapers(),
+                                  listRequestedPapers(),
+                                ]);
+                                setDbPapers(dbList);
+                                setRequested(reqList);
+                              } catch (e) {
+                                setError(e instanceof Error ? e.message : 'Failed to start processing');
+                              } finally {
+                                setIsLoading(false);
+                              }
+                            }}
+                          >
+                            Start
+                          </button>
+                          <div className="relative inline-block text-left">
+                            <Menu arxivId={r.arxiv_id} onDeleted={async () => {
+                              try {
+                                setIsLoading(true);
+                                setError(null);
+                                await deleteRequestedPaper(r.arxiv_id);
+                                const reqList = await listRequestedPapers();
+                                setRequested(reqList);
+                              } catch (e) {
+                                setError(e instanceof Error ? e.message : 'Failed to delete request');
+                              } finally {
+                                setIsLoading(false);
+                              }
+                            }} />
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {requested.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="px-6 py-8 text-center text-sm text-gray-500 dark:text-gray-400">No requests yet.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
           <div className="mb-6 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-sm">
             <div className="px-6 py-3 text-sm font-semibold border-b border-gray-200 dark:border-gray-700">Papers (Database)</div>
             <div className="overflow-x-auto">
@@ -380,6 +472,37 @@ export default function ManagementPage() {
             </div>
           </div>
         </>
+      )}
+    </div>
+  );
+}
+
+function Menu({ arxivId, onDeleted }: { arxivId: string; onDeleted: () => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative">
+      <button
+        className="px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        title="Actions"
+      >
+        ⋮
+      </button>
+      {open && (
+        <div className="absolute right-0 mt-2 w-40 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-10">
+          <button
+            className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30"
+            onClick={async () => {
+              setOpen(false);
+              if (!confirm(`Delete request for ${arxivId}?`)) return;
+              await onDeleted();
+            }}
+          >
+            Delete
+          </button>
+        </div>
       )}
     </div>
   );

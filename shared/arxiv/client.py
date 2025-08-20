@@ -69,14 +69,15 @@ async def parse_url(url: str) -> ParsedArxivUrl:
         raise ValueError("Invalid arXiv URL")
     path = m.group(1)
 
-    # Match /abs/<id>(vN) and /pdf/<id>(vN).pdf
-    abs_m = re.match(r"^abs/(?P<idver>[^?#]+)$", path)
+    # Match /abs/<id>(vN)[optional slash] with optional query/fragment
+    abs_m = re.match(r"^abs/(?P<idver>[^/?#]+)(?:/)?(?:[?#].*)?$", path)
     if abs_m:
         idver = abs_m.group("idver")
         arxiv_id, version = _split_id_and_version(idver)
         return ParsedArxivUrl(raw=raw, arxiv_id=arxiv_id, version=version, url_type="abs")
 
-    pdf_m = re.match(r"^pdf/(?P<idver>[^?#]+)\.pdf$", path)
+    # Match /pdf/<id>(vN)[.pdf optional][optional slash] with optional query/fragment
+    pdf_m = re.match(r"^pdf/(?P<idver>[^/?#]+?)(?:\.pdf)?(?:/)?(?:[?#].*)?$", path)
     if pdf_m:
         idver = pdf_m.group("idver")
         arxiv_id, version = _split_id_and_version(idver)
