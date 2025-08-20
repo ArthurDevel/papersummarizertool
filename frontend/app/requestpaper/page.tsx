@@ -37,7 +37,12 @@ export default function RequestPaperPage() {
         throw new Error((payload as any)?.detail || `Request failed (${res.status})`);
       }
       if ((payload as RequestArxivResponse).state === 'exists' && (payload as RequestArxivResponse).viewer_url) {
-        setViewerUrl((payload as RequestArxivResponse).viewer_url || null);
+        const urlStr = (payload as RequestArxivResponse).viewer_url || '';
+        try { console.debug('[requestpaper] exists viewer_url from backend', urlStr); } catch {}
+        if (!urlStr.startsWith('/paper/')) {
+          throw new Error('Unexpected viewer URL format from backend');
+        }
+        setViewerUrl(urlStr);
         setMessage('This paper is already available.');
       } else {
         setMessage('Your request was added.');

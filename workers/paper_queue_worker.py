@@ -11,7 +11,7 @@ from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from shared.db import SessionLocal
-from api.models import PaperRow, RequestedPaperRow
+from api.models import PaperRow, RequestedPaperRow, PaperSlugRow
 from shared.arxiv.client import fetch_pdf_for_processing
 from paperprocessor.client import process_paper_pdf
 
@@ -72,6 +72,16 @@ async def _process_one(job: PaperRow) -> None:
             thumb_val = result.get('thumbnail_data_url')
             j.thumbnail_data_url = thumb_val if isinstance(thumb_val, str) else None
             s.add(j)
+            # Create slug on completion; strict: require title and authors; throw on collision
+            try:
+                from api.endpoints.paper_processing_endpoints import _build_slug_from_title_and_authors
+                slug = _build_slug_from_title_and_authors(j.title, j.authors)
+                exists = s.query(PaperSlugRow).filter(PaperSlugRow.slug == slug).first()
+                if exists:
+                    raise ValueError(f"Slug collision for '{slug}'")
+                s.add(PaperSlugRow(slug=slug, paper_uuid=j.paper_uuid, tombstone=False, created_at=datetime.utcnow()))
+            except Exception:
+                logger.exception("Failed to create slug for paper_uuid=%s", j.paper_uuid)
             # Mark corresponding request as processed (soft-delete)
             try:
                 req = s.query(RequestedPaperRow).filter(RequestedPaperRow.arxiv_id == (j.arxiv_id)).first()

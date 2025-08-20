@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from api.types.paper_processing_api_models import Paper, JobStatusResponse
 from paperprocessor.client import process_paper_pdf
 from shared.db import get_session
-from api.models import PaperRow, RequestedPaperRow
+from api.models import PaperRow, RequestedPaperRow, PaperSlugRow
 from shared.arxiv.client import normalize_id, parse_url, fetch_metadata, head_pdf, download_pdf
 import os
 import uuid
@@ -225,6 +225,20 @@ def delete_paper(paper_uuid: str, db: Session = Depends(get_session)):
         pass
     # Remove DB row
     db.delete(row)
+    db.flush()
+
+    # Leave slug tombstones: keep slug entries but null out paper_uuid and mark tombstone
+    try:
+        slug_rows = db.query(PaperSlugRow).filter(PaperSlugRow.paper_uuid == paper_uuid).all()
+        now = datetime.utcnow()
+        for s in slug_rows:
+            s.paper_uuid = None
+            s.tombstone = True
+            s.deleted_at = now
+            db.add(s)
+    except Exception:
+        logger.exception("Failed to tombstone slugs for paper_uuid=%s", paper_uuid)
+
     db.commit()
     return {"deleted": paper_uuid}
 
@@ -258,13 +272,31 @@ async def request_arxiv(req: RequestArxivRequest, db: Session = Depends(get_sess
     abs_url = f"https://arxiv.org/abs/{arxiv_id}"
     pdf_url = f"https://arxiv.org/pdf/{arxiv_id}.pdf"
 
-    # If the paper exists and is completed with JSON available, return viewer URL and DO NOT add to requests
+    # If the paper exists and is completed with JSON available, return pretty URL (/paper/<slug>) and DO NOT add to requests
     job = db.query(PaperRow).filter(PaperRow.arxiv_id == arxiv_id).first()
     if job and job.status == "completed":
         base_dir = os.path.abspath(os.path.join(os.getcwd(), 'data', 'paperjsons'))
         json_path = os.path.join(base_dir, f"{job.paper_uuid}.json")
         if os.path.exists(json_path):
-            return RequestArxivResponse(state="exists", viewer_url=f"/?file={job.paper_uuid}.json")
+            # Resolve or create slug for this paper
+            slug_row = (
+                db.query(PaperSlugRow)
+                .filter(PaperSlugRow.paper_uuid == job.paper_uuid)
+                .filter(PaperSlugRow.tombstone == False)  # noqa: E712
+                .order_by(PaperSlugRow.created_at.desc())
+                .first()
+            )
+            if not slug_row:
+                # Create slug; strict rules: require title and authors; on collision raise
+                slug_val = _build_slug_from_title_and_authors(job.title, job.authors)
+                exists = db.query(PaperSlugRow).filter(PaperSlugRow.slug == slug_val).first()
+                if exists:
+                    raise HTTPException(status_code=409, detail="Slug already exists")
+                slug_row = PaperSlugRow(slug=slug_val, paper_uuid=job.paper_uuid, tombstone=False, created_at=datetime.utcnow())
+                db.add(slug_row)
+                db.commit()
+                db.refresh(slug_row)
+            return RequestArxivResponse(state="exists", viewer_url=f"/paper/{slug_row.slug}")
 
     # Otherwise, upsert into requested_papers (increment count, update timestamps)
     now = datetime.utcnow()
@@ -501,6 +533,7 @@ def import_paper_json(paper: Dict[str, Any], db: Session = Depends(get_session))
         existing.thumbnail_data_url = thumbnail_data_url
         db.add(existing)
         db.flush()
+        target_paper_row = existing
     else:
         # Ensure paper_uuid uniqueness; if collides with another arxiv_id, generate a new one
         target_uuid = paper_id
@@ -528,6 +561,7 @@ def import_paper_json(paper: Dict[str, Any], db: Session = Depends(get_session))
         )
         db.add(new_row)
         db.flush()
+        target_paper_row = new_row
 
     # Mark requested paper as processed, if exists
     try:
@@ -537,6 +571,18 @@ def import_paper_json(paper: Dict[str, Any], db: Session = Depends(get_session))
             db.add(req)
     except Exception:
         logger.exception("Failed to mark requested paper as processed for arxiv_id=%s", arxiv_id)
+
+    # Create slug on import; require title/authors; error on collision
+    try:
+        slug = _build_slug_from_title_and_authors(title, authors)
+        exists = db.query(PaperSlugRow).filter(PaperSlugRow.slug == slug).first()
+        if exists:
+            raise HTTPException(status_code=409, detail="Slug already exists")
+        db.add(PaperSlugRow(slug=slug, paper_uuid=target_paper_row.paper_uuid, tombstone=False, created_at=now))
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Failed to create slug for imported paper %s", target_paper_row.paper_uuid)
 
     db.commit()
 
@@ -578,3 +624,91 @@ def import_paper_json(paper: Dict[str, Any], db: Session = Depends(get_session))
         total_cost=job.total_cost,
         avg_cost_per_page=job.avg_cost_per_page,
     )
+
+
+# --- Slug generation and resolution ---
+
+def _slugify_value(value: str) -> str:
+    # Lowercase, strip accents, keep alnum and hyphen
+    try:
+        import unicodedata
+        value = unicodedata.normalize('NFKD', value).encode('ascii', 'ignore').decode('ascii')
+    except Exception:
+        value = value
+    value = value.lower()
+    value = re.sub(r"[^a-z0-9]+", "-", value)
+    value = re.sub(r"-+", "-", value).strip('-')
+    return value[:120]
+
+
+def _build_slug_from_title_and_authors(title: Optional[str], authors: Optional[str]) -> str:
+    if not title or not authors:
+        raise HTTPException(status_code=400, detail="Cannot generate slug without title and authors")
+    # Limit title to the first 12 words
+    try:
+        title_tokens = [t for t in (title or '').split() if t]
+    except Exception:
+        title_tokens = []
+    limited_title = " ".join(title_tokens[:12]) if title_tokens else title
+    # Take up to two authors, using last names when possible
+    author_list = [a.strip() for a in authors.split(',') if a.strip()]
+    if len(author_list) == 0:
+        raise HTTPException(status_code=400, detail="Cannot generate slug: no authors present")
+    use_authors = author_list[:2]
+    def last_name(full: str) -> str:
+        parts = full.split()
+        return parts[-1] if parts else full
+    author_bits = [last_name(a) for a in use_authors]
+    base = f"{limited_title} {' '.join(author_bits)}"
+    return _slugify_value(base)
+
+
+class ResolveSlugResponse(BaseModel):
+    paper_uuid: Optional[str]
+    slug: str
+    tombstone: bool
+
+
+@router.get("/papers/slug/{slug}", response_model=ResolveSlugResponse)
+def resolve_slug(slug: str, db: Session = Depends(get_session)):
+    row = db.query(PaperSlugRow).filter(PaperSlugRow.slug == slug).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Slug not found")
+    return ResolveSlugResponse(paper_uuid=row.paper_uuid, slug=row.slug, tombstone=bool(getattr(row, 'tombstone', False)))
+
+
+class CreateSlugRequest(BaseModel):
+    paper_uuid: str
+
+
+@router.post("/papers/{paper_uuid}/slug", response_model=ResolveSlugResponse)
+def create_slug(paper_uuid: str, db: Session = Depends(get_session)):
+    # Load paper and validate required metadata
+    job = db.query(PaperRow).filter(PaperRow.paper_uuid == paper_uuid).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Paper not found")
+    slug = _build_slug_from_title_and_authors(job.title, job.authors)
+    # Enforce uniqueness strictly; on collision, throw 409
+    existing = db.query(PaperSlugRow).filter(PaperSlugRow.slug == slug).first()
+    if existing:
+        raise HTTPException(status_code=409, detail="Slug already exists")
+    row = PaperSlugRow(slug=slug, paper_uuid=paper_uuid, tombstone=False, created_at=datetime.utcnow())
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return ResolveSlugResponse(paper_uuid=row.paper_uuid, slug=row.slug, tombstone=bool(row.tombstone))
+
+
+@router.get("/papers/{paper_uuid}/slug", response_model=ResolveSlugResponse)
+def get_slug_for_paper(paper_uuid: str, db: Session = Depends(get_session)):
+    # Return latest non-tombstone slug for this paper
+    row = (
+        db.query(PaperSlugRow)
+        .filter(PaperSlugRow.paper_uuid == paper_uuid)
+        .filter(PaperSlugRow.tombstone == False)  # noqa: E712
+        .order_by(PaperSlugRow.created_at.desc())
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Slug not found for paper")
+    return ResolveSlugResponse(paper_uuid=row.paper_uuid, slug=row.slug, tombstone=False)

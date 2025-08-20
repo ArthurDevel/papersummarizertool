@@ -56,3 +56,15 @@ class RequestedPaperRow(Base):
     authors = Column(Text, nullable=True)
     num_pages = Column(Integer, nullable=True)
 
+
+
+class PaperSlugRow(Base):
+    __tablename__ = "paper_slugs"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    slug = Column(String(255), nullable=False, unique=True)
+    paper_uuid = Column(String(36), nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    # Tombstone preserves the slug after deletion of the paper
+    tombstone = Column(Boolean, nullable=False, default=False)
+    deleted_at = Column(DateTime, nullable=True)

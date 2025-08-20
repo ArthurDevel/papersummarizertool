@@ -462,12 +462,43 @@ export default function ManagementPage() {
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{p.id}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
                         <div className="flex items-center gap-3 justify-end">
-                          <a
+                          <button
                             className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
-                            href={`/?file=${encodeURIComponent(p.title)}`}
+                            onClick={async () => {
+                              try {
+                                setIsLoading(true);
+                                setError(null);
+                                const paperUuid = p.id;
+                                // Try to get an existing slug
+                                const res = await fetch(`/api/papers/${encodeURIComponent(paperUuid)}/slug`, { cache: 'no-store' });
+                                if (res.ok) {
+                                  const payload = await res.json();
+                                  const slug: string | undefined = payload?.slug;
+                                  if (slug) {
+                                    window.location.href = `/paper/${encodeURIComponent(slug)}`;
+                                    return;
+                                  }
+                                }
+                                // If slug not found, attempt to create one
+                                const createRes = await fetch(`/api/papers/${encodeURIComponent(paperUuid)}/slug`, { method: 'POST' });
+                                if (createRes.ok) {
+                                  const payload = await createRes.json();
+                                  const slug: string | undefined = payload?.slug;
+                                  if (slug) {
+                                    window.location.href = `/paper/${encodeURIComponent(slug)}`;
+                                    return;
+                                  }
+                                }
+                                throw new Error('Slug not found or cannot be created');
+                              } catch (e) {
+                                setError(e instanceof Error ? e.message : 'Failed to open via slug');
+                              } finally {
+                                setIsLoading(false);
+                              }
+                            }}
                           >
                             View
-                          </a>
+                          </button>
                           <button
                             className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300"
                             onClick={async () => {

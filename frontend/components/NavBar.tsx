@@ -40,7 +40,7 @@ export default function NavBar({ className = '' }: NavBarProps) {
           </li>
           <li>
             <Link
-              href="https://github.com/"
+              href="https://github.com/ArthurDevel/papersummarizertool"
               target="_blank"
               rel="noopener noreferrer"
               className="text-sm text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors flex items-center gap-2"
