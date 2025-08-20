@@ -78,15 +78,19 @@ export default function ManagementPage() {
         setError(null);
         const text = await file.text();
         // Validate JSON locally first
-        JSON.parse(text);
-        const res = await fetch('/layouttests/data', {
+        const parsed = JSON.parse(text);
+        // Import into backend (writes DB row and data/paperjsons file)
+        const res = await fetch('/api/papers/import_json', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: text,
+          body: JSON.stringify(parsed),
         });
-        const payload = await res.json();
-        if (!res.ok) throw new Error(payload?.error || `Upload failed (${res.status})`);
-        // Refresh list
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(payload?.detail || `Import failed (${res.status})`);
+        // Refresh DB list
+        const dbList = await listPapers();
+        setDbPapers(dbList);
+        // Refresh local JSON files list
         const listRes = await fetch('/layouttests/data', { cache: 'no-store' });
         const listJson = await listRes.json();
         const files: string[] = Array.isArray(listJson?.files) ? listJson.files : [];
@@ -336,6 +340,35 @@ export default function ManagementPage() {
                         </button>
                         {openMenuUuid === r.paper_uuid && (
                           <div className="absolute right-0 mt-2 w-40 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-10">
+                            <button
+                              className="block w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
+                              onClick={async () => {
+                                try {
+                                  setIsLoading(true);
+                                  setError(null);
+                                  const filename = `${r.paper_uuid}.json`;
+                                  const res = await fetch(`/layouttests/data?file=${encodeURIComponent(filename)}`, { cache: 'no-store' });
+                                  const payload = await res.json().catch(() => ({}));
+                                  if (!res.ok) throw new Error(payload?.error || `Download failed (${res.status})`);
+                                  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+                                  const url = URL.createObjectURL(blob);
+                                  const a = document.createElement('a');
+                                  a.href = url;
+                                  a.download = filename;
+                                  document.body.appendChild(a);
+                                  a.click();
+                                  a.remove();
+                                  URL.revokeObjectURL(url);
+                                } catch (e) {
+                                  setError(e instanceof Error ? e.message : 'Failed to download');
+                                } finally {
+                                  setIsLoading(false);
+                                  setOpenMenuUuid(null);
+                                }
+                              }}
+                            >
+                              Download JSON
+                            </button>
                             <button
                               className="block w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
                               onClick={async () => {

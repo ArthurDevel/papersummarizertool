@@ -1,5 +1,5 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, BackgroundTasks, Response, status, Depends
-from typing import Union, List, Optional
+from typing import Union, List, Optional, Dict, Any
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from api.types.paper_processing_api_models import Paper, JobStatusResponse
@@ -12,6 +12,7 @@ import uuid
 from datetime import datetime
 from api.background_jobs import create_job, get_job_status, update_job_status
 import logging
+import re
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -425,3 +426,155 @@ async def delete_requested_paper(arxiv_id_or_url: str, db: Session = Depends(get
     db.delete(row)
     db.commit()
     return DeleteRequestedResponse(deleted=base_id)
+
+
+# --- Import worker-generated JSON into DB and filesystem ---
+
+def _derive_arxiv_version_from_url(arxiv_url: Optional[str]) -> Optional[str]:
+    if not arxiv_url:
+        return None
+    try:
+        # Expect formats like https://arxiv.org/abs/<id>v3 (optional version)
+        m = re.search(r"/abs/[^/]+?(v\d+)$", arxiv_url)
+        if m:
+            return m.group(1)
+        return None
+    except Exception:
+        return None
+
+
+class ImportResult(BaseModel):
+    paper_uuid: str
+    status: str
+
+
+@router.post("/papers/import_json", response_model=JobDbStatus)
+def import_paper_json(paper: Dict[str, Any], db: Session = Depends(get_session)):
+    # Validate minimal required fields
+    paper_id = paper.get("paper_id")
+    arxiv_id = paper.get("arxiv_id")
+    if not isinstance(paper_id, str) or not paper_id:
+        raise HTTPException(status_code=400, detail="paper_id is required in JSON")
+    if not isinstance(arxiv_id, str) or not arxiv_id:
+        raise HTTPException(status_code=400, detail="arxiv_id is required in JSON")
+
+    title = paper.get("title") if isinstance(paper.get("title"), str) else None
+    authors = paper.get("authors") if isinstance(paper.get("authors"), str) else None
+    arxiv_url_val = paper.get("arxiv_url") if isinstance(paper.get("arxiv_url"), str) else None
+    arxiv_version_val = _derive_arxiv_version_from_url(arxiv_url_val)
+    thumbnail_data_url = paper.get("thumbnail_data_url") if isinstance(paper.get("thumbnail_data_url"), str) else None
+    pages = paper.get("pages") if isinstance(paper.get("pages"), list) else []
+    num_pages = len(pages)
+    processing_time_seconds = paper.get("processing_time_seconds")
+    if not isinstance(processing_time_seconds, (int, float)):
+        processing_time_seconds = None
+    usage_summary = paper.get("usage_summary") or {}
+    total_cost = usage_summary.get("total_cost") if isinstance(usage_summary, dict) else None
+    if not isinstance(total_cost, (int, float)):
+        total_cost = None
+    avg_cost_per_page = None
+    try:
+        if total_cost is not None and num_pages > 0:
+            avg_cost_per_page = float(total_cost) / float(num_pages)
+    except Exception:
+        avg_cost_per_page = None
+
+    now = datetime.utcnow()
+
+    # Upsert by arxiv_id
+    existing = db.query(PaperRow).filter(PaperRow.arxiv_id == arxiv_id).first()
+    if existing:
+        target_uuid = existing.paper_uuid
+        # Update existing row to completed
+        existing.status = "completed"
+        existing.error_message = None
+        existing.updated_at = now
+        existing.finished_at = now
+        existing.title = title
+        existing.authors = authors
+        existing.arxiv_url = arxiv_url_val
+        existing.arxiv_version = arxiv_version_val
+        existing.num_pages = num_pages
+        existing.processing_time_seconds = processing_time_seconds
+        existing.total_cost = total_cost
+        existing.avg_cost_per_page = avg_cost_per_page
+        existing.thumbnail_data_url = thumbnail_data_url
+        db.add(existing)
+        db.flush()
+    else:
+        # Ensure paper_uuid uniqueness; if collides with another arxiv_id, generate a new one
+        target_uuid = paper_id
+        by_uuid = db.query(PaperRow).filter(PaperRow.paper_uuid == target_uuid).first()
+        if by_uuid and by_uuid.arxiv_id != arxiv_id:
+            target_uuid = str(uuid.uuid4())
+        new_row = PaperRow(
+            paper_uuid=target_uuid,
+            arxiv_id=arxiv_id,
+            arxiv_version=arxiv_version_val,
+            arxiv_url=arxiv_url_val,
+            title=title,
+            authors=authors,
+            status="completed",
+            error_message=None,
+            created_at=now,
+            updated_at=now,
+            started_at=None,
+            finished_at=now,
+            num_pages=num_pages,
+            processing_time_seconds=processing_time_seconds,
+            total_cost=total_cost,
+            avg_cost_per_page=avg_cost_per_page,
+            thumbnail_data_url=thumbnail_data_url,
+        )
+        db.add(new_row)
+        db.flush()
+
+    # Mark requested paper as processed, if exists
+    try:
+        req = db.query(RequestedPaperRow).filter(RequestedPaperRow.arxiv_id == arxiv_id).first()
+        if req and not getattr(req, 'processed', False):
+            req.processed = True
+            db.add(req)
+    except Exception:
+        logger.exception("Failed to mark requested paper as processed for arxiv_id=%s", arxiv_id)
+
+    db.commit()
+
+    # Persist JSON to data/paperjsons using the chosen UUID; optionally normalize paper_id inside file
+    try:
+        base_dir = os.path.abspath(os.path.join(os.getcwd(), 'data', 'paperjsons'))
+        os.makedirs(base_dir, exist_ok=True)
+        target_path = os.path.join(base_dir, f"{target_uuid}.json")
+        # Ensure the internal paper_id matches the filename/DB UUID
+        if paper.get('paper_id') != target_uuid:
+            paper = dict(paper)
+            paper['paper_id'] = target_uuid
+        import json as _json
+        with open(target_path, 'w', encoding='utf-8') as f:
+            _json.dump(paper, f, ensure_ascii=False)
+    except Exception:
+        logger.exception("Failed to write imported JSON for paper_uuid=%s", target_uuid)
+
+    # Return the DB row
+    job = db.query(PaperRow).filter(PaperRow.paper_uuid == target_uuid).first()
+    if not job:
+        raise HTTPException(status_code=500, detail="Import completed but record not found")
+    return JobDbStatus(
+        paper_uuid=job.paper_uuid,
+        status=job.status,
+        error_message=job.error_message,
+        created_at=job.created_at,
+        updated_at=job.updated_at,
+        started_at=job.started_at,
+        finished_at=job.finished_at,
+        arxiv_id=job.arxiv_id,
+        arxiv_version=job.arxiv_version,
+        arxiv_url=job.arxiv_url,
+        title=job.title,
+        authors=job.authors,
+        num_pages=job.num_pages,
+        thumbnail_data_url=getattr(job, 'thumbnail_data_url', None),
+        processing_time_seconds=job.processing_time_seconds,
+        total_cost=job.total_cost,
+        avg_cost_per_page=job.avg_cost_per_page,
+    )
