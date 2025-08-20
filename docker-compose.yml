@@ -10,7 +10,6 @@ services:
     env_file:
       - .env
     ports:
-      - "${HOSTPORT_API:-8000}:${CONTAINERPORT_API:-8000}"
       - "${HOSTPORT_FRONTEND:-3000}:${CONTAINERPORT_FRONTEND:-3000}"
     volumes:
       - ./data:/app/data

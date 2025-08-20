@@ -1,4 +1,5 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, BackgroundTasks, Response, status, Depends
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from typing import Union, List, Optional, Dict, Any
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -16,6 +17,23 @@ import re
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+# --- Simple HTTP Basic admin protection ---
+security = HTTPBasic()
+
+def require_admin(credentials: HTTPBasicCredentials = Depends(security)):
+    import os, secrets
+    expected_user = "admin"
+    expected_pass = os.environ.get("ADMIN_BASIC_PASSWORD", "")
+    ok_user = secrets.compare_digest(credentials.username, expected_user)
+    ok_pass = secrets.compare_digest(credentials.password, expected_pass)
+    if not (ok_user and ok_pass):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Unauthorized",
+            headers={"WWW-Authenticate": 'Basic realm="Management"'},
+        )
+    return True
 
 async def process_paper_in_background(job_id: str, contents: bytes):
     """
@@ -156,7 +174,7 @@ def get_paper_by_uuid(paper_uuid: str, db: Session = Depends(get_session)):
 
 
 @router.get("/papers", response_model=List[JobDbStatus])
-def list_papers(status: Optional[str] = None, limit: int = 500, db: Session = Depends(get_session)):
+def list_papers(status: Optional[str] = None, limit: int = 500, db: Session = Depends(get_session), _admin: bool = Depends(require_admin)):
     q = db.query(PaperRow)
     if status:
         statuses = [s.strip() for s in status.split(",") if s.strip()]
@@ -193,7 +211,7 @@ class RestartPaperRequest(BaseModel):
 
 
 @router.post("/papers/{paper_uuid}/restart", status_code=200)
-def restart_paper(paper_uuid: str, _body: RestartPaperRequest | None = None, db: Session = Depends(get_session)):
+def restart_paper(paper_uuid: str, _body: RestartPaperRequest | None = None, db: Session = Depends(get_session), _admin: bool = Depends(require_admin)):
     row = db.query(PaperRow).filter(PaperRow.paper_uuid == paper_uuid).first()
     if not row:
         raise HTTPException(status_code=404, detail="Paper not found")
@@ -211,7 +229,7 @@ def restart_paper(paper_uuid: str, _body: RestartPaperRequest | None = None, db:
 
 
 @router.delete("/papers/{paper_uuid}", status_code=200)
-def delete_paper(paper_uuid: str, db: Session = Depends(get_session)):
+def delete_paper(paper_uuid: str, db: Session = Depends(get_session), _admin: bool = Depends(require_admin)):
     row = db.query(PaperRow).filter(PaperRow.paper_uuid == paper_uuid).first()
     if not row:
         raise HTTPException(status_code=404, detail="Paper not found")
@@ -366,7 +384,7 @@ class RequestedPaperItem(BaseModel):
 
 
 @router.get("/requested_papers", response_model=List[RequestedPaperItem])
-def list_requested_papers(include_processed: bool = False, db: Session = Depends(get_session)):
+def list_requested_papers(include_processed: bool = False, db: Session = Depends(get_session), _admin: bool = Depends(require_admin)):
     q = db.query(RequestedPaperRow)
     if not include_processed:
         q = q.filter(RequestedPaperRow.processed == False)  # noqa: E712
@@ -393,7 +411,7 @@ class StartProcessingResponse(BaseModel):
 
 
 @router.post("/requested_papers/{arxiv_id_or_url}/start_processing", response_model=StartProcessingResponse)
-async def start_processing_requested(arxiv_id_or_url: str, db: Session = Depends(get_session)):
+async def start_processing_requested(arxiv_id_or_url: str, db: Session = Depends(get_session), _admin: bool = Depends(require_admin)):
     # Normalize to base id
     try:
         norm = await normalize_id(arxiv_id_or_url)
@@ -446,7 +464,7 @@ class DeleteRequestedResponse(BaseModel):
 
 
 @router.delete("/requested_papers/{arxiv_id_or_url}", response_model=DeleteRequestedResponse)
-async def delete_requested_paper(arxiv_id_or_url: str, db: Session = Depends(get_session)):
+async def delete_requested_paper(arxiv_id_or_url: str, db: Session = Depends(get_session), _admin: bool = Depends(require_admin)):
     try:
         norm = await normalize_id(arxiv_id_or_url)
     except Exception:
@@ -481,7 +499,7 @@ class ImportResult(BaseModel):
 
 
 @router.post("/papers/import_json", response_model=JobDbStatus)
-def import_paper_json(paper: Dict[str, Any], db: Session = Depends(get_session)):
+def import_paper_json(paper: Dict[str, Any], db: Session = Depends(get_session), _admin: bool = Depends(require_admin)):
     # Validate minimal required fields
     paper_id = paper.get("paper_id")
     arxiv_id = paper.get("arxiv_id")

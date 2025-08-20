@@ -29,11 +29,6 @@ export default function NavBar({ className = '' }: NavBarProps) {
             </Link>
           </li>
           <li>
-            <Link href="/management" className="text-sm text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors">
-              Management
-            </Link>
-          </li>
-          <li>
             <Link href="/about" className="text-sm text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors">
               About Us
             </Link>
