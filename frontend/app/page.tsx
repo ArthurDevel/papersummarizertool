@@ -22,6 +22,7 @@ export default function LayoutTestsPage() {
   const [error, setError] = useState<string | null>(null);
   const [availableFiles, setAvailableFiles] = useState<string[]>([]);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const [similarItems, setSimilarItems] = useState<Array<{ name: string; title: string | null; authors: string | null; thumbnail_data_url: string | null }>>([]);
   const abortRef = useRef<AbortController | null>(null);
   const mainRef = useRef<HTMLDivElement | null>(null);
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
@@ -71,6 +72,37 @@ export default function LayoutTestsPage() {
     fetchIndexAndMaybeData(fileParam);
     return () => abortRef.current?.abort();
   }, [searchParams]);
+
+  // Load metadata for similar papers (title/authors/thumbnail)
+  useEffect(() => {
+    const others = availableFiles.filter((f) => f !== (selectedFile ?? ''));
+    if (others.length === 0) {
+      setSimilarItems([]);
+      return;
+    }
+    (async () => {
+      try {
+        const results = await Promise.all(
+          others.map(async (name) => {
+            try {
+              const res = await fetch(`/layouttests/data?file=${encodeURIComponent(name)}`, { cache: 'no-store' });
+              if (!res.ok) throw new Error('detail fetch failed');
+              const json = await res.json();
+              const title = typeof json?.title === 'string' ? json.title : null;
+              const authors = typeof json?.authors === 'string' ? json.authors : null;
+              const thumb = typeof json?.thumbnail_data_url === 'string' ? json.thumbnail_data_url : null;
+              return { name, title, authors, thumbnail_data_url: thumb } as { name: string; title: string | null; authors: string | null; thumbnail_data_url: string | null };
+            } catch {
+              return { name, title: null, authors: null, thumbnail_data_url: null } as { name: string; title: string | null; authors: string | null; thumbnail_data_url: string | null };
+            }
+          })
+        );
+        setSimilarItems(results);
+      } catch {
+        setSimilarItems([]);
+      }
+    })();
+  }, [availableFiles, selectedFile]);
 
   useEffect(() => {
     if (!paperData) return;
@@ -316,23 +348,34 @@ export default function LayoutTestsPage() {
         {paperData ? (
           <>
             <div className="mb-4 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-md overflow-hidden p-4">
-              <h1 className="text-3xl font-bold mb-1">{paperData.title || 'Untitled'}</h1>
-              {paperData.authors && (
-                <p className="text-sm text-gray-700 dark:text-gray-300 mb-1">{paperData.authors}</p>
-              )}
-              <p className="text-xs text-gray-500 dark:text-gray-400">Paper ID: {paperData.paper_id}</p>
-              {paperData.arxiv_url && (
-                <a
-                  href={paperData.arxiv_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="mt-2 inline-flex items-center gap-1.5 text-xs text-blue-600 hover:underline"
-                  title="Open on arXiv"
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                  Open on arXiv
-                </a>
-              )}
+              <div className="flex items-start gap-4 max-w-full">
+                {(paperData as any)?.thumbnail_data_url && (
+                  <img
+                    src={(paperData as any).thumbnail_data_url as string}
+                    alt="Paper thumbnail"
+                    className="w-24 h-24 rounded-md object-cover flex-shrink-0"
+                  />
+                )}
+                <div className="min-w-0 flex-1 overflow-hidden break-words">
+                  <h1 className="text-3xl font-bold mb-1 break-words whitespace-normal">{paperData.title || 'Untitled'}</h1>
+                  {paperData.authors && (
+                    <p className="text-sm text-gray-700 dark:text-gray-300 mb-1 break-words whitespace-normal">{paperData.authors}</p>
+                  )}
+                  <p className="text-xs text-gray-500 dark:text-gray-400 break-all">Paper ID: {paperData.paper_id}</p>
+                  {paperData.arxiv_url && (
+                    <a
+                      href={paperData.arxiv_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-2 inline-flex items-center gap-1.5 text-xs text-blue-600 hover:underline"
+                      title="Open on arXiv"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      Open on arXiv
+                    </a>
+                  )}
+                </div>
+              </div>
             </div>
 
             <div className="flex flex-col space-y-6 flex-grow">
@@ -487,31 +530,30 @@ export default function LayoutTestsPage() {
                 </div>
               )}
               <ul className="space-y-1">
-                {availableFiles
-                  .filter((f) => f !== (selectedFile ?? ''))
-                  .map((name) => (
-                    <li key={name}>
-                      <button
-                        onClick={() => fetchIndexAndMaybeData(name)}
-                        className="w-full text-left px-3 py-2 rounded-md text-sm transition-colors bg-white dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200"
-                        title={`Open ${name}`}
-                        aria-label={`Open ${name}`}
-                      >
-                        <div className="flex items-start gap-3">
-                          <div className="w-16 h-12 bg-gray-200 dark:bg-gray-600 rounded-md flex-shrink-0" />
-                          <div className="min-w-0">
-                            <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">{name}</div>
-                            <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Author A, Author B</div>
-                            <div className="mt-2 flex flex-wrap gap-1.5">
-                              <span className="text-[10px] px-2 py-0.5 rounded bg-gray-100 text-gray-700 dark:bg-gray-600 dark:text-gray-200">badge</span>
-                              <span className="text-[10px] px-2 py-0.5 rounded bg-gray-100 text-gray-700 dark:bg-gray-600 dark:text-gray-200">badge</span>
-                              <span className="text-[10px] px-2 py-0.5 rounded bg-gray-100 text-gray-700 dark:bg-gray-600 dark:text-gray-200">badge</span>
-                            </div>
-                          </div>
+                {similarItems.map(({ name, title, authors, thumbnail_data_url }) => (
+                  <li key={name}>
+                    <button
+                      onClick={() => fetchIndexAndMaybeData(name)}
+                      className="w-full text-left px-3 py-2 rounded-md text-sm transition-colors bg-white dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200"
+                      title={`Open ${name}`}
+                      aria-label={`Open ${name}`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="w-16 h-16 bg-gray-200 dark:bg-gray-600 rounded-md flex-shrink-0 overflow-hidden">
+                          {thumbnail_data_url && (
+                            <img src={thumbnail_data_url} alt="" className="w-16 h-16 object-cover" />
+                          )}
                         </div>
-                      </button>
-                    </li>
-                  ))}
+                        <div className="min-w-0">
+                          <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">{title || name}</div>
+                          {authors && (
+                            <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">{authors}</div>
+                          )}
+                        </div>
+                      </div>
+                    </button>
+                  </li>
+                ))}
               </ul>
               {availableFiles.filter((f) => f !== (selectedFile ?? '')).length === 0 && (
                 <p className="text-sm text-gray-500 dark:text-gray-400">No other preloaded papers found. Add more JSON files to <span className="font-mono">data/paperjsons/</span>.</p>

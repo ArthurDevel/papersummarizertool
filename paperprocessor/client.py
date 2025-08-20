@@ -319,7 +319,33 @@ class PaperProcessorClient:
             self.executor, convert_pdf_to_images, pdf_contents
         )
 
-        # Step 2: Extract assets and high-level content structure
+        # Step 2: Generate a square 400x400 thumbnail from the top of the first page
+        thumbnail_data_url: Optional[str] = None
+        try:
+            if images:
+                first_img = images[0]
+                width, height = first_img.size
+                # Compute top square crop box
+                if width <= height:
+                    left, upper, right, lower = 0, 0, width, width
+                else:
+                    # Wider than tall: center horizontally, crop top square with side=height
+                    side = height
+                    left = max(0, int(round((width - side) / 2)))
+                    upper = 0
+                    right = left + side
+                    lower = side
+                square = first_img.crop((left, upper, right, lower))
+                try:
+                    resample = Image.Resampling.LANCZOS  # Pillow >= 9.1.0
+                except AttributeError:
+                    resample = Image.LANCZOS
+                thumb = square.resize((400, 400), resample=resample)
+                thumbnail_data_url = f"data:image/png;base64,{self._image_to_base64(thumb)}"
+        except Exception:
+            logging.exception("Failed to generate thumbnail from first page")
+
+        # Step 3: Extract assets and high-level content structure
         # Usage aggregation for this run
         usage_summary: Dict[str, Any] = {
             "currency": "USD",
@@ -361,10 +387,10 @@ class PaperProcessorClient:
 
         extraction_result = await self._extract_assets_and_mentions(pdf_contents, images, _record_usage)
         
-        # Step 3: Generate Table of Contents
+        # Step 4: Generate Table of Contents
         toc = await self._generate_toc(extraction_result["headers"], _record_usage)
 
-        # Steps 4 & 5: Explain Assets and Process Sections (I/O-bound, run concurrently)
+        # Steps 5 & 6: Explain Assets and Process Sections (I/O-bound, run concurrently)
         asset_explanations_task = self._explain_assets(
             extraction_result["assets"],
             extraction_result["asset_mentions"],
@@ -401,6 +427,7 @@ class PaperProcessorClient:
             "authors": arxiv_authors_str,
             "arxiv_id": arxiv_id_value,
             "arxiv_url": arxiv_url,
+            "thumbnail_data_url": thumbnail_data_url,
             "sections": processed_toc,
             "tables": asset_explanations["tables"],
             "figures": asset_explanations["figures"],

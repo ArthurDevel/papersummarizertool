@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 
 export default function AllPapersPage() {
-  const [items, setItems] = useState<Array<{ name: string; title: string | null; authors: string | null }>>([]);
+  const [items, setItems] = useState<Array<{ name: string; title: string | null; authors: string | null; thumbnail_data_url: string | null }>>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -19,7 +19,7 @@ export default function AllPapersPage() {
         const data = await res.json();
         if (!Array.isArray(data?.files)) throw new Error('Unexpected response');
         const files: string[] = data.files;
-        // Enrich each file entry with title/authors from its JSON (best effort)
+        // Enrich each file entry with title/authors/thumbnail from its JSON (best effort)
         const enriched = await Promise.all(
           files.map(async (name: string) => {
             try {
@@ -28,9 +28,10 @@ export default function AllPapersPage() {
               const json = await detailRes.json();
               const title = typeof json?.title === 'string' ? json.title : null;
               const authors = typeof json?.authors === 'string' ? json.authors : null;
-              return { name, title, authors } as { name: string; title: string | null; authors: string | null };
+              const thumb = typeof json?.thumbnail_data_url === 'string' ? json.thumbnail_data_url : null;
+              return { name, title, authors, thumbnail_data_url: thumb } as { name: string; title: string | null; authors: string | null; thumbnail_data_url: string | null };
             } catch {
-              return { name, title: null, authors: null } as { name: string; title: string | null; authors: string | null };
+              return { name, title: null, authors: null, thumbnail_data_url: null } as { name: string; title: string | null; authors: string | null; thumbnail_data_url: string | null };
             }
           })
         );
@@ -71,20 +72,27 @@ export default function AllPapersPage() {
         ) : items.length === 0 ? (
           <div className="text-gray-600 dark:text-gray-300">No papers found. Add JSON files to <span className="font-mono">data/paperjsons/</span>.</div>
         ) : (
-          <ul className="divide-y divide-gray-200 dark:divide-gray-700 rounded-md overflow-hidden border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
-            {items.map(({ name, title, authors }) => (
-              <li key={name} className="px-4 py-3 text-gray-800 dark:text-gray-200">
-                <Link href={`/?file=${encodeURIComponent(name)}`} className="hover:underline">
-                  <div className="flex flex-col">
-                    <span className="font-semibold text-blue-600 dark:text-blue-400">{title || name}</span>
-                    {authors && (
-                      <span className="text-sm text-gray-600 dark:text-gray-400">{authors}</span>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {items.map(({ name, title, authors, thumbnail_data_url }) => (
+              <Link key={name} href={`/?file=${encodeURIComponent(name)}`} className="group">
+                <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden shadow-sm h-full">
+                  <div className="w-full aspect-square bg-gray-100 dark:bg-gray-700 flex items-center justify-center overflow-hidden">
+                    {thumbnail_data_url ? (
+                      <img src={thumbnail_data_url} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="text-gray-400 text-sm">No thumbnail</div>
                     )}
                   </div>
-                </Link>
-              </li>
+                  <div className="p-3">
+                    <div className="font-semibold text-gray-900 dark:text-gray-100 group-hover:underline break-words line-clamp-3">{title || name}</div>
+                    {authors && (
+                      <div className="text-xs text-gray-600 dark:text-gray-400 mt-1 break-words line-clamp-3">{authors}</div>
+                    )}
+                  </div>
+                </div>
+              </Link>
             ))}
-          </ul>
+          </div>
         )}
       </div>
     </main>

@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import BigInteger, Column, DateTime, Integer, String, Text, UniqueConstraint, Float, Boolean
+from sqlalchemy.dialects.mysql import MEDIUMTEXT
 
 from shared.db import Base
 
@@ -29,6 +30,8 @@ class PaperRow(Base):
     processing_time_seconds = Column(Float, nullable=True)
     total_cost = Column(Float, nullable=True)
     avg_cost_per_page = Column(Float, nullable=True)
+    # Base64 data URL of a 400x400 PNG thumbnail cropped from the top square of the first page
+    thumbnail_data_url = Column(MEDIUMTEXT, nullable=True)
 
     __table_args__ = (
         UniqueConstraint("paper_uuid", name="uq_papers_paper_uuid"),

@@ -122,6 +122,7 @@ class JobDbStatus(BaseModel):
     title: str | None = None
     authors: str | None = None
     num_pages: int | None = None
+    thumbnail_data_url: str | None = None
     processing_time_seconds: float | None = None
     total_cost: float | None = None
     avg_cost_per_page: float | None = None
@@ -146,6 +147,7 @@ def get_paper_by_uuid(paper_uuid: str, db: Session = Depends(get_session)):
         title=job.title,
         authors=job.authors,
         num_pages=job.num_pages,
+        thumbnail_data_url=getattr(job, 'thumbnail_data_url', None),
         processing_time_seconds=job.processing_time_seconds,
         total_cost=job.total_cost,
         avg_cost_per_page=job.avg_cost_per_page,
@@ -176,6 +178,7 @@ def list_papers(status: Optional[str] = None, limit: int = 500, db: Session = De
             title=r.title,
             authors=r.authors,
             num_pages=r.num_pages,
+            thumbnail_data_url=getattr(r, 'thumbnail_data_url', None),
             processing_time_seconds=r.processing_time_seconds,
             total_cost=r.total_cost,
             avg_cost_per_page=r.avg_cost_per_page,

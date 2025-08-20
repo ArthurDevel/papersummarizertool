@@ -50,3 +50,6 @@ debug_output/
 
 # Generated OCR output
 ocr_output.txt
+
+# Data folder
+data/

@@ -40,6 +40,7 @@ export interface Paper {
   title: string | null;
   authors?: string | null;
   arxiv_url?: string | null;
+  thumbnail_data_url?: string | null;
   sections: Section[];
   tables: Table[];
   figures: Figure[];

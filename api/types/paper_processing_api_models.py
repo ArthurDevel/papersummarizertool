@@ -54,6 +54,7 @@ class Paper(BaseModel):
     title: Optional[str] = None
     authors: Optional[str] = None
     arxiv_url: Optional[str] = None
+    thumbnail_data_url: Optional[str] = None
     sections: List[Section]
     tables: List[Table]
     figures: List[Figure]

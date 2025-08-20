@@ -69,6 +69,8 @@ async def _process_one(job: PaperRow) -> None:
             # Persist title and authors (strings) if available; else set to None
             j.title = result.get('title') if isinstance(result.get('title'), str) else None
             j.authors = result.get('authors') if isinstance(result.get('authors'), str) else None
+            thumb_val = result.get('thumbnail_data_url')
+            j.thumbnail_data_url = thumb_val if isinstance(thumb_val, str) else None
             s.add(j)
             # Mark corresponding request as processed (soft-delete)
             try:
