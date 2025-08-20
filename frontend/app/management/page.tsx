@@ -179,6 +179,8 @@ export default function ManagementPage() {
               <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                 <thead className="bg-gray-50 dark:bg-gray-700/50">
                   <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Title</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Authors</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">ArXiv ID</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Paper UUID</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Status</th>
@@ -198,6 +200,8 @@ export default function ManagementPage() {
                 <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                   {dbPapers.map((r) => (
                     <tr key={r.paper_uuid}>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium max-w-xs truncate" title={r.title || ''}>{r.title || '-'}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400 max-w-sm truncate" title={r.authors || ''}>{r.authors || '-'}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">{r.arxiv_id}{r.arxiv_version || ''}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{r.paper_uuid}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm">{r.status}</td>

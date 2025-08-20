@@ -1,6 +1,6 @@
 import logging
 import time
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 import os
 import io
 import base64
@@ -14,6 +14,10 @@ from paperprocessor.internals.pdf_to_image import convert_pdf_to_images
 from paperprocessor.internals.asset_extraction import AssetExtractor
 from shared.openrouter import client as openrouter
 from api.types.paper_processing_api_models import Paper
+from shared.arxiv.client import (
+    normalize_id as arxiv_normalize_id,
+    fetch_metadata as arxiv_fetch_metadata,
+)
 
 
 class PaperProcessorClient:
@@ -282,13 +286,32 @@ class PaperProcessorClient:
         logging.info("Finished processing all top-level sections.")
         return toc
 
-    async def process_paper_pdf(self, pdf_contents: bytes, paper_id: str | None = None) -> Dict[str, Any]:
+    async def process_paper_pdf(self, pdf_contents: bytes, paper_id: str | None = None, arxiv_id_or_url: Optional[str] = None) -> Dict[str, Any]:
         """
         Processes a PDF file through the multi-step pipeline.
         """
         logging.info("Paper processing pipeline started.")
         _t0 = time.perf_counter()
         loop = asyncio.get_running_loop()
+
+        # Step 0: Optional arXiv metadata fetch for title/authors
+        arxiv_title: Optional[str] = None
+        arxiv_authors_str: Optional[str] = None
+        arxiv_id_value: Optional[str] = None
+        arxiv_url: Optional[str] = None
+        try:
+            if arxiv_id_or_url:
+                norm = await arxiv_normalize_id(arxiv_id_or_url)
+                meta = await arxiv_fetch_metadata(norm.arxiv_id)
+                arxiv_title = (meta.title or None)
+                # Authors as a single string, names separated by comma and space
+                arxiv_authors_str = ", ".join([a.name for a in (meta.authors or [])]) or None
+                arxiv_id_value = norm.arxiv_id
+                # Prefer version if specified or from metadata
+                version_suffix = norm.version or (meta.latest_version if meta else None) or ""
+                arxiv_url = f"https://arxiv.org/abs/{norm.arxiv_id}{version_suffix}"
+        except Exception:
+            logging.exception("Failed to fetch arXiv metadata; continuing with null title/authors")
 
         # Step 1: PDF to Image Conversion (CPU-bound)
         logging.info("Step 1: Converting PDF to images.")
@@ -358,11 +381,8 @@ class PaperProcessorClient:
         )
 
         # Final Assembly
-        title = "Unknown Document"
-        if processed_toc:
-            # Attempt to find the first major section as the title
-            first_section = sorted(processed_toc, key=lambda x: x['start_page'])[0]
-            title = first_section.get('section_title', title)
+        # Title: always prefer arXiv title; if not available, set to None (no fallback)
+        title = arxiv_title
 
         # Encode each (already resized) page image as a base64 data URL (PNG)
         pages = [
@@ -378,6 +398,9 @@ class PaperProcessorClient:
         final_result = {
             "paper_id": paper_id or "temp_id",
             "title": title,
+            "authors": arxiv_authors_str,
+            "arxiv_id": arxiv_id_value,
+            "arxiv_url": arxiv_url,
             "sections": processed_toc,
             "tables": asset_explanations["tables"],
             "figures": asset_explanations["figures"],
@@ -392,8 +415,8 @@ class PaperProcessorClient:
 # Global instance for the application to use
 paper_processor_client = PaperProcessorClient()
 
-async def process_paper_pdf(pdf_contents: bytes, paper_id: str | None = None) -> Dict[str, Any]:
+async def process_paper_pdf(pdf_contents: bytes, paper_id: str | None = None, arxiv_id_or_url: Optional[str] = None) -> Dict[str, Any]:
     """
     Processes a PDF file by calling the global paper processor client.
     """
-    return await paper_processor_client.process_paper_pdf(pdf_contents, paper_id)
+    return await paper_processor_client.process_paper_pdf(pdf_contents, paper_id, arxiv_id_or_url)

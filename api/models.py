@@ -16,6 +16,8 @@ class PaperRow(Base):
     arxiv_id = Column(String(64), nullable=False)
     arxiv_version = Column(String(10), nullable=True)
     arxiv_url = Column(String(255), nullable=True)
+    title = Column(String(512), nullable=True)
+    authors = Column(Text, nullable=True)
     status = Column(String(20), nullable=False, default="not_started")
     error_message = Column(Text, nullable=True)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)

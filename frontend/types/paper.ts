@@ -37,7 +37,9 @@ export interface Section {
 
 export interface Paper {
   paper_id: string;
-  title: string;
+  title: string | null;
+  authors?: string | null;
+  arxiv_url?: string | null;
   sections: Section[];
   tables: Table[];
   figures: Figure[];

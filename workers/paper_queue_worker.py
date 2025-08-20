@@ -37,7 +37,7 @@ async def _process_one(job: PaperRow) -> None:
     logger.info("Processing job id=%s paper_uuid=%s arxiv=%s", job.id, job.paper_uuid, job.arxiv_id)
     try:
         pdf = await fetch_pdf_for_processing(job.arxiv_url or job.arxiv_id)
-        result = await process_paper_pdf(pdf.pdf_bytes, paper_id=job.paper_uuid)
+        result = await process_paper_pdf(pdf.pdf_bytes, paper_id=job.paper_uuid, arxiv_id_or_url=(job.arxiv_url or job.arxiv_id))
 
         # Persist JSON to data/paperjsons
         base_dir = os.path.abspath(os.path.join(os.getcwd(), 'data', 'paperjsons'))
@@ -66,6 +66,9 @@ async def _process_one(job: PaperRow) -> None:
             j.processing_time_seconds = processing_time
             j.total_cost = total_cost
             j.avg_cost_per_page = avg_cost_per_page
+            # Persist title and authors (strings) if available; else set to None
+            j.title = result.get('title') if isinstance(result.get('title'), str) else None
+            j.authors = result.get('authors') if isinstance(result.get('authors'), str) else None
             s.add(j)
     except Exception as e:
         logger.exception("Job %s failed", job.id)

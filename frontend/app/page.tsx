@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Paper, Section, Figure, Table } from '../types/paper';
-import { Loader } from 'lucide-react';
+import { Loader, ExternalLink } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -316,8 +316,23 @@ export default function LayoutTestsPage() {
         {paperData ? (
           <>
             <div className="mb-4 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-md overflow-hidden p-4">
-              <h1 className="text-3xl font-bold mb-2">{paperData.title}</h1>
-              <p className="text-sm text-gray-500 dark:text-gray-400">Paper ID: {paperData.paper_id}</p>
+              <h1 className="text-3xl font-bold mb-1">{paperData.title || 'Untitled'}</h1>
+              {paperData.authors && (
+                <p className="text-sm text-gray-700 dark:text-gray-300 mb-1">{paperData.authors}</p>
+              )}
+              <p className="text-xs text-gray-500 dark:text-gray-400">Paper ID: {paperData.paper_id}</p>
+              {paperData.arxiv_url && (
+                <a
+                  href={paperData.arxiv_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-2 inline-flex items-center gap-1.5 text-xs text-blue-600 hover:underline"
+                  title="Open on arXiv"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  Open on arXiv
+                </a>
+              )}
             </div>
 
             <div className="flex flex-col space-y-6 flex-grow">

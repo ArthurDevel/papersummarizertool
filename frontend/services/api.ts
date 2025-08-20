@@ -65,6 +65,9 @@ export type JobDbStatus = {
     finished_at?: string | null;
     arxiv_id: string;
     arxiv_version?: string | null;
+    arxiv_url?: string | null;
+    title?: string | null;
+    authors?: string | null;
     num_pages?: number | null;
     processing_time_seconds?: number | null;
     total_cost?: number | null;

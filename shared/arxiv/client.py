@@ -249,3 +249,60 @@ async def fetch_pdf_for_processing(id_or_url: str) -> ArxivPdfForProcessing:
 # Intentionally no classes; functional, stateless helpers only
 
 
+
+# --- Simple search helpers ---
+
+async def search_metadata_by_title(title_query: str) -> Optional[ArxivMetadata]:
+    """Search arXiv by exact title phrase and return the first match's metadata, if any.
+
+    This uses the export.arxiv.org ATOM API with a title phrase query.
+    """
+    if not title_query or not title_query.strip():
+        return None
+    q = title_query.strip().replace('\n', ' ').strip()
+    # Use quoted phrase match; limit to a few results
+    search_url = f"{ARXIV_EXPORT_HOST}/api/query?search_query=ti:\"{httpx.QueryParams({'q': q}).get('q')}\"&start=0&max_results=3"
+    async with _http_client() as client:
+        try:
+            resp = await client.get(search_url)
+            resp.raise_for_status()
+        except Exception:
+            logger.exception("arXiv title search failed")
+            return None
+        content = resp.content
+    try:
+        root = ET.fromstring(content)
+        ns = {
+            "atom": "http://www.w3.org/2005/Atom",
+            "arxiv": "http://arxiv.org/schemas/atom",
+        }
+        entry = root.find("atom:entry", ns)
+        if entry is None:
+            return None
+        # Extract id like http://arxiv.org/abs/XXXX
+        id_text = (entry.find("atom:id", ns).text or "").strip()
+        m = re.search(r"/(?:abs|pdf)/([^/]+)", id_text)
+        if not m:
+            # Fallback: try title-only parse
+            title = _find_text(entry, "atom:title") or ""
+            # Without an id, we can still return a partial metadata; but we prefer full
+            return ArxivMetadata(
+                arxiv_id="",
+                latest_version=None,
+                title=title,
+                authors=[],
+                abstract=_find_text(entry, "atom:summary") or "",
+                categories=[],
+                doi=None,
+                journal_ref=None,
+                submitted_at=None,
+                updated_at=None,
+                all_versions=[],
+            )
+        idver = m.group(1)
+        base_id = _split_id_and_version(idver)[0]
+        return await fetch_metadata(base_id)
+    except Exception:
+        logger.exception("Failed to parse arXiv title search response")
+        return None
+

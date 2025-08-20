@@ -118,6 +118,9 @@ class JobDbStatus(BaseModel):
     finished_at: datetime | None = None
     arxiv_id: str
     arxiv_version: str | None = None
+    arxiv_url: str | None = None
+    title: str | None = None
+    authors: str | None = None
     num_pages: int | None = None
     processing_time_seconds: float | None = None
     total_cost: float | None = None
@@ -139,6 +142,9 @@ def get_paper_by_uuid(paper_uuid: str, db: Session = Depends(get_session)):
         finished_at=job.finished_at,
         arxiv_id=job.arxiv_id,
         arxiv_version=job.arxiv_version,
+        arxiv_url=job.arxiv_url,
+        title=job.title,
+        authors=job.authors,
         num_pages=job.num_pages,
         processing_time_seconds=job.processing_time_seconds,
         total_cost=job.total_cost,
@@ -166,6 +172,9 @@ def list_papers(status: Optional[str] = None, limit: int = 500, db: Session = De
             finished_at=r.finished_at,
             arxiv_id=r.arxiv_id,
             arxiv_version=r.arxiv_version,
+            arxiv_url=r.arxiv_url,
+            title=r.title,
+            authors=r.authors,
             num_pages=r.num_pages,
             processing_time_seconds=r.processing_time_seconds,
             total_cost=r.total_cost,

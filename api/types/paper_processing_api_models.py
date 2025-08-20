@@ -51,7 +51,9 @@ class UsageSummary(BaseModel):
 
 class Paper(BaseModel):
     paper_id: str
-    title: str
+    title: Optional[str] = None
+    authors: Optional[str] = None
+    arxiv_url: Optional[str] = None
     sections: List[Section]
     tables: List[Table]
     figures: List[Figure]
