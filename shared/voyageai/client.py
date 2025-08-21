@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import List, Optional, Dict, Any
+import logging
 
 import httpx
 
@@ -21,6 +22,8 @@ _HEADERS = {
     "Content-Type": "application/json",
 }
 _TIMEOUT_SECONDS = 60
+
+logger = logging.getLogger(__name__)
 
 
 def _get_async_client() -> httpx.AsyncClient:
@@ -64,6 +67,17 @@ async def embed_texts(
     dim: Optional[int] = len(vectors[0]) if vectors and isinstance(vectors[0], list) else None
     usage = data.get("usage") if isinstance(data.get("usage"), dict) else None
     request_id = data.get("id") or data.get("request_id")
+    try:
+        logger.info(
+            "Voyage embeddings: model=%s inputs=%d input_type=%s dim=%s request_id=%s",
+            model,
+            len(texts),
+            input_type,
+            dim,
+            request_id,
+        )
+    except Exception:
+        pass
     return EmbeddingResult(
         vectors=vectors,
         model=model,
@@ -115,6 +129,17 @@ async def rerank(
     items.sort(key=lambda x: x.score, reverse=True)
     usage = data.get("usage") if isinstance(data.get("usage"), dict) else None
     request_id = data.get("id") or data.get("request_id")
+    try:
+        logger.info(
+            "Voyage rerank: model=%s docs=%d top_k=%d returned=%d request_id=%s",
+            model,
+            len(documents),
+            payload.get("top_k"),
+            len(items),
+            request_id,
+        )
+    except Exception:
+        pass
     return RerankResult(model=model, items=items, usage=usage, request_id=request_id, raw_response=data)
 
 

@@ -152,6 +152,8 @@ export type SearchItem = {
     slug?: string | null;
     title?: string | null;
     authors?: string | null;
+    abs_url?: string | null;
+    summary?: string | null;
     qdrant_score?: number | null;
     rerank_score?: number | null;
 };

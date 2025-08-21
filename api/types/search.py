@@ -18,6 +18,8 @@ class SearchItem(BaseModel):
     slug: Optional[str] = None
     title: Optional[str] = None
     authors: Optional[str] = None
+    abs_url: Optional[str] = None
+    summary: Optional[str] = None
     qdrant_score: Optional[float] = None
     rerank_score: Optional[float] = None
 

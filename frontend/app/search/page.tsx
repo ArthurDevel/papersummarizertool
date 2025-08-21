@@ -104,17 +104,30 @@ export default function SearchPage() {
         )}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {results.map((it) => (
-            <a key={it.paper_uuid} href={it.slug ? `/paper/${encodeURIComponent(it.slug)}` : '#'} className={`group block border rounded bg-white dark:bg-gray-800 ${it.slug ? '' : 'pointer-events-none opacity-60'}`}>
-              <div className="p-3">
-                <div className="font-semibold text-gray-900 dark:text-gray-100 group-hover:underline break-words line-clamp-3">{it.title || it.paper_uuid}</div>
-                {it.authors && (
-                  <div className="text-xs text-gray-600 dark:text-gray-400 mt-1 break-words line-clamp-3">{it.authors}</div>
-                )}
-                <div className="text-[11px] text-gray-400 mt-2">score: {it.rerank_score ?? it.qdrant_score ?? 0}</div>
-              </div>
-            </a>
-          ))}
+          {results.map((it) => {
+            const href = it.abs_url || '#';
+            const clickable = Boolean(it.abs_url);
+            return (
+              <a
+                key={it.paper_uuid}
+                href={href}
+                target={it.abs_url ? '_blank' : undefined}
+                rel={it.abs_url ? 'noopener noreferrer' : undefined}
+                className={`group block border rounded bg-white dark:bg-gray-800 ${clickable ? '' : 'pointer-events-none opacity-60'}`}
+              >
+                <div className="p-3">
+                  <div className="font-semibold text-gray-900 dark:text-gray-100 group-hover:underline break-words line-clamp-3">{it.title || it.paper_uuid}</div>
+                  {it.authors && (
+                    <div className="text-xs text-gray-600 dark:text-gray-400 mt-1 break-words line-clamp-3">{it.authors}</div>
+                  )}
+                  {it.summary && (
+                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-2 break-words line-clamp-4">{it.summary}</div>
+                  )}
+                  <div className="text-[11px] text-gray-400 mt-2">score: {it.rerank_score ?? it.qdrant_score ?? 0}</div>
+                </div>
+              </a>
+            );
+          })}
         </div>
       </div>
     </main>

@@ -158,7 +158,20 @@ async def get_multimodal_json_response(system_prompt: str, user_prompt_parts: Li
             data = response.json()
 
             # Extract JSON content
-            json_content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+            message = (data.get("choices", [{}])[0] or {}).get("message", {}) or {}
+            json_content = message.get("content", "")
+            # Fallback: some providers may return structured output via tool_calls
+            if (not isinstance(json_content, str)) or (isinstance(json_content, str) and not json_content.strip()):
+                tool_calls = message.get("tool_calls") or []
+                if isinstance(tool_calls, list) and tool_calls:
+                    try:
+                        fn = (tool_calls[0] or {}).get("function") or {}
+                        args_text = fn.get("arguments")
+                        if isinstance(args_text, str) and args_text.strip():
+                            json_content = args_text
+                            logger.debug("OpenRouter JSON fallback: extracted from tool_calls arguments (len=%s)", len(json_content))
+                    except Exception:
+                        pass
 
             usage = data.get("usage", {}) or {}
             choices = data.get("choices", []) or []
@@ -242,7 +255,20 @@ async def get_json_response(system_prompt: str, user_prompt: str, model: str) ->
             data = response.json()
 
             # Extract JSON content
-            json_content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+            message = (data.get("choices", [{}])[0] or {}).get("message", {}) or {}
+            json_content = message.get("content", "")
+            # Fallback: some providers may return structured output via tool_calls
+            if (not isinstance(json_content, str)) or (isinstance(json_content, str) and not json_content.strip()):
+                tool_calls = message.get("tool_calls") or []
+                if isinstance(tool_calls, list) and tool_calls:
+                    try:
+                        fn = (tool_calls[0] or {}).get("function") or {}
+                        args_text = fn.get("arguments")
+                        if isinstance(args_text, str) and args_text.strip():
+                            json_content = args_text
+                            logger.debug("OpenRouter JSON fallback: extracted from tool_calls arguments (len=%s)", len(json_content))
+                    except Exception:
+                        pass
 
             usage = data.get("usage", {}) or {}
             choices = data.get("choices", []) or []

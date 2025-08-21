@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from typing import List
+import json
+import logging
 
 from fastapi import APIRouter, HTTPException, status
 
@@ -14,6 +16,7 @@ from shared.arxiv.client import search_by_user_query, find_similar_papers
 
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.post("/search/query", response_model=SearchQueryResponse)
@@ -31,16 +34,59 @@ async def search_query(req: SearchQueryRequest) -> SearchQueryResponse:
     for r in results:
         point = (r or {}).get("point") or {}
         payload = (point or {}).get("payload") or {}
+        # Normalize authors from authors_json (stored as JSON string)
+        authors_val = ", ".join(json.loads(payload.get("authors_json") or "[]"))
+        try:
+            logger.info(
+                "Search map item: id=%s title=%s authors_json_len=%s abs_url=%s",
+                str((point or {}).get("id")),
+                (payload.get("title") or '')[:80],
+                len(payload.get("authors_json") or []),
+                payload.get("abs_url"),
+            )
+            # Additional debug for authors_json only
+            raw_authors_json = payload.get("authors_json")
+            logger.info(
+                "Search authors debug: id=%s authors_json_type=%s authors_json_len=%s authors_str_preview=%s",
+                str((point or {}).get("id")),
+                type(raw_authors_json).__name__,
+                (len(raw_authors_json) if isinstance(raw_authors_json, list) else None),
+                (authors_val or '')[:100],
+            )
+            try:
+                raw_preview = str(raw_authors_json)
+            except Exception:
+                raw_preview = "<unprintable>"
+            logger.info(
+                "Search authors raw: id=%s raw=%s",
+                str((point or {}).get("id")),
+                (raw_preview[:500] if isinstance(raw_preview, str) else raw_preview),
+            )
+        except Exception:
+            pass
         items.append(
             SearchItem(
                 paper_uuid=str((point or {}).get("id") or payload.get("paper_uuid") or ""),
                 slug=payload.get("slug"),
                 title=payload.get("title"),
-                authors=payload.get("authors"),
+                authors=authors_val,
+                abs_url=payload.get("abs_url"),
+                summary=payload.get("summary"),
                 qdrant_score=r.get("qdrant_score"),
                 rerank_score=r.get("rerank_score"),
             )
         )
+    try:
+        logger.info(
+            "Search /search/query returning items=%s rewritten=%s cats=%s dates=%s→%s",
+            len(items),
+            bool(meta.get("rewritten_query")),
+            (meta.get("applied_categories") or [])[:5],
+            meta.get("applied_date_from"),
+            meta.get("applied_date_to"),
+        )
+    except Exception:
+        pass
     return SearchQueryResponse(
         items=items,
         rewritten_query=meta.get("rewritten_query"),
@@ -59,12 +105,43 @@ async def similar_papers(paper_uuid: str, limit: int = 20) -> SimilarPapersRespo
     for r in results:
         point = (r or {}).get("point") or {}
         payload = (point or {}).get("payload") or {}
+        # Authors strictly from authors_json (JSON string)
+        authors_val = ", ".join(json.loads(payload.get("authors_json") or "[]"))
+        try:
+            logger.info(
+                "Similar map item: id=%s title=%s authors_json_len=%s abs_url=%s",
+                str((point or {}).get("id")),
+                (payload.get("title") or '')[:80],
+                len(payload.get("authors_json") or []),
+                payload.get("abs_url"),
+            )
+            raw_authors_json = payload.get("authors_json")
+            logger.info(
+                "Similar authors debug: id=%s authors_json_type=%s authors_json_len=%s authors_str_preview=%s",
+                str((point or {}).get("id")),
+                type(raw_authors_json).__name__,
+                (len(raw_authors_json) if isinstance(raw_authors_json, list) else None),
+                (authors_val or '')[:100],
+            )
+            try:
+                raw_preview = str(raw_authors_json)
+            except Exception:
+                raw_preview = "<unprintable>"
+            logger.info(
+                "Similar authors raw: id=%s raw=%s",
+                str((point or {}).get("id")),
+                (raw_preview[:500] if isinstance(raw_preview, str) else raw_preview),
+            )
+        except Exception:
+            pass
         items.append(
             SearchItem(
                 paper_uuid=str((point or {}).get("id") or payload.get("paper_uuid") or ""),
                 slug=payload.get("slug"),
                 title=payload.get("title"),
-                authors=payload.get("authors"),
+                authors=authors_val,
+                abs_url=payload.get("abs_url"),
+                summary=payload.get("summary"),
                 qdrant_score=r.get("qdrant_score"),
                 rerank_score=None,
             )

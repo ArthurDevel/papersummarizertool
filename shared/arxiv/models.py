@@ -14,7 +14,9 @@ class ArxivPaperVectorPayload(BaseModel):
     arxiv_id: str
     slug: Optional[str] = None
     title: Optional[str] = None
-    authors: Optional[str] = None
+    # Preferred: list of author names
+    authors_json: Optional[List[str]] = None
+    # Optional denormalized string (legacy); avoid using in new code
     categories: Optional[List[str]] = None
     published_at: Optional[str] = None
     updated_at: Optional[str] = None
@@ -23,6 +25,9 @@ class ArxivPaperVectorPayload(BaseModel):
     embedding_model: Optional[str] = None
     embedding_dimensions: Optional[int] = None
     abstract_excerpt: Optional[str] = None
+    # Additional commonly used fields in search UI
+    abs_url: Optional[str] = None
+    summary: Optional[str] = None
     has_thumbnail: Optional[bool] = None
     extra: Optional[dict] = None
 
