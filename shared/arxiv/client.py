@@ -1,6 +1,6 @@
 import re
 import httpx
-from typing import Optional, Tuple, List
+from typing import Optional, Tuple, List, Union, Dict, Any
 from datetime import datetime
 import logging
 import email.utils
@@ -16,6 +16,11 @@ from shared.arxiv.models import (
     ArxivPdfResult,
     ArxivPdfForProcessing,
 )
+from shared.qdrant.client import search_by_vector as qdrant_search_by_vector, get_vector_by_id as qdrant_get_vector_by_id, ensure_collection as qdrant_ensure_collection
+from shared.voyageai.client import embed_query as voyage_embed_query, rerank as voyage_rerank
+from shared.openrouter.client import get_json_response as or_get_json_response
+from shared.utils import to_epoch_seconds
+import os
 
 
 logger = logging.getLogger(__name__)
@@ -174,7 +179,7 @@ async def fetch_metadata(arxiv_id: str) -> ArxivMetadata:
         latest_version=latest_version,
         title=title,
         authors=authors,
-        abstract=summary,
+        summary=summary,
         categories=categories,
         doi=doi,
         journal_ref=journal_ref,
@@ -306,4 +311,213 @@ async def search_metadata_by_title(title_query: str) -> Optional[ArxivMetadata]:
     except Exception:
         logger.exception("Failed to parse arXiv title search response")
         return None
+
+
+# --- Vector search orchestration (user query and similar papers) ---
+
+from functools import lru_cache
+
+
+@lru_cache(maxsize=1)
+def _read_arxiv_categories() -> List[str]:
+    """Load arXiv categories list from CSV into a flat list of terms."""
+    try:
+        base_dir = os.path.abspath(os.path.join(os.getcwd(), 'shared', 'arxiv', 'internals'))
+        path = os.path.join(base_dir, 'arxiv_categories.csv')
+        items: List[str] = []
+        with open(path, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = (line or '').strip()
+                if not line or line.lower().startswith('category'):
+                    # Skip header or empty
+                    continue
+                parts = [p.strip() for p in line.split(',')]
+                if parts:
+                    items.append(parts[0])
+        return items
+    except Exception:
+        logger.exception("Failed to read arXiv categories CSV")
+        return []
+
+
+_to_epoch_seconds = to_epoch_seconds
+
+
+async def search_by_user_query(
+    query: str,
+    is_new: bool = False,
+    selected_categories: Optional[List[str]] = None,
+    date_from: Optional[Union[str, datetime]] = None,
+    date_to: Optional[Union[str, datetime]] = None,
+    limit: int = 20,
+    rerank_top_k: int = 50,
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """
+    Orchestrate user search across VoyageAI + Qdrant with optional LLM-assisted filters.
+    Returns (results, meta).
+    results: list of { point, qdrant_score, rerank_score }
+    meta: { rewritten_query?, applied_categories?, applied_date_from?, applied_date_to? }
+    """
+    original_query = (query or '').strip()
+    if not original_query:
+        return [], {"error": "empty_query"}
+
+    applied_categories: Optional[List[str]] = selected_categories[:] if selected_categories else None
+    applied_date_from = date_from
+    applied_date_to = date_to
+    rewritten_query: Optional[str] = None
+
+    # Step A: If is_new, ask LLM for categories/date range and a rewritten query
+    if is_new and not selected_categories and not (date_from or date_to):
+        try:
+            cats = _read_arxiv_categories()
+            system_prompt = (
+                "You are assisting with arXiv search. Given a user query and the list of valid arXiv categories, "
+                "return a strict JSON object with keys: selected_categories (array of strings drawn ONLY from the provided list), "
+                "date_from (ISO 8601 date or null), date_to (ISO 8601 date or null), and rewritten_query (string). Keep arrays small (<=5)."
+            )
+            user_prompt = (
+                f"Query: {original_query}\n\n"
+                f"Valid categories (examples): {', '.join(cats[:100])} ...\n"
+                f"If the user implies recency (e.g., 'recent'), set date_from to about 1 year ago and date_to to today; otherwise nulls."
+            )
+            llm = await or_get_json_response(system_prompt=system_prompt, user_prompt=user_prompt, model="openai/gpt-oss-120b")
+            data = getattr(llm, 'parsed_json', None) or {}
+            # Extract with guards
+            if isinstance(data.get('selected_categories'), list) and data['selected_categories']:
+                applied_categories = [str(x) for x in data['selected_categories'] if isinstance(x, (str, int))]
+            if isinstance(data.get('rewritten_query'), str) and data['rewritten_query'].strip():
+                rewritten_query = data['rewritten_query'].strip()
+            df = data.get('date_from')
+            dt = data.get('date_to')
+            if applied_date_from is None and isinstance(df, str):
+                applied_date_from = df
+            if applied_date_to is None and isinstance(dt, str):
+                applied_date_to = dt
+        except Exception:
+            logger.exception("LLM-assisted filter selection failed; proceeding without it")
+
+    # Step B: Embed query via Voyage
+    query_text = (rewritten_query or original_query)
+    # Ensure query embedding matches the collection dimension
+    query_vector = await voyage_embed_query(query_text, output_dimension=2048)
+    if not query_vector:
+        return [], {"error": "embed_failed"}
+
+    # Step C: Qdrant vector search with filters
+    date_from_ts = _to_epoch_seconds(applied_date_from)
+    date_to_ts = _to_epoch_seconds(applied_date_to)
+    initial_k = max(limit, min(rerank_top_k, 200))
+    # Ensure collection exists (domain-owned): arxiv_papers, 2048-dim, cosine distance
+    try:
+        qdrant_ensure_collection(vector_size=2048, collection="arxiv_papers")
+    except Exception:
+        logger.exception("Failed to ensure Qdrant collection arxiv_papers")
+    raw_hits = qdrant_search_by_vector(
+        query_vector=query_vector,
+        limit=initial_k,
+        categories=applied_categories,
+        date_from_ts=date_from_ts,
+        date_to_ts=date_to_ts,
+        collection="arxiv_papers",
+    )
+
+    if not raw_hits:
+        return [], {"rewritten_query": rewritten_query, "applied_categories": applied_categories, "applied_date_from": applied_date_from, "applied_date_to": applied_date_to}
+
+    # Step D: Rerank candidates strictly using summary text only
+    documents: List[str] = []
+    doc_to_hit_index: List[int] = []
+    for idx, h in enumerate(raw_hits):
+        payload = h.payload or {}
+        summary = payload.get('summary')
+        if isinstance(summary, str):
+            summary = summary.strip()
+        if summary:
+            documents.append(summary)
+            doc_to_hit_index.append(idx)
+
+    # If no summaries available, return empty result (no guessing / no fallback)
+    if not documents:
+        logger.error("Rerank skipped: no summaries available in Qdrant payloads (documents=0)")
+        return [], {
+            "rewritten_query": rewritten_query,
+            "applied_categories": applied_categories,
+            "applied_date_from": applied_date_from,
+            "applied_date_to": applied_date_to,
+        }
+
+    try:
+        top_k = min(limit, len(documents))
+        rr = await voyage_rerank(query=query_text, documents=documents, top_k=top_k)
+        order = rr.items or []
+        out: List[Dict[str, Any]] = []
+        if order:
+            # Build results in rerank order
+            for item in order:
+                doc_idx = item.index
+                if 0 <= doc_idx < len(doc_to_hit_index):
+                    hit_idx = doc_to_hit_index[doc_idx]
+                    hit = raw_hits[hit_idx]
+                    out.append({
+                        "point": {"id": hit.id, "payload": hit.payload},
+                        "qdrant_score": hit.score,
+                        "rerank_score": item.score,
+                    })
+        else:
+            # Reranker returned nothing; log and fall back to Qdrant order
+            logger.error("Reranker returned no items; falling back to Qdrant order (hits=%s, docs=%s)", len(raw_hits), len(documents))
+            out = [
+                {"point": {"id": h.id, "payload": h.payload}, "qdrant_score": h.score, "rerank_score": None}
+                for h in raw_hits[:limit]
+            ]
+        return out[:limit], {
+            "rewritten_query": rewritten_query,
+            "applied_categories": applied_categories,
+            "applied_date_from": applied_date_from,
+            "applied_date_to": applied_date_to,
+        }
+    except Exception:
+        logger.exception("Rerank failed; falling back to Qdrant order")
+        out_fb: List[Dict[str, Any]] = [
+            {"point": {"id": h.id, "payload": h.payload}, "qdrant_score": h.score, "rerank_score": None}
+            for h in raw_hits[:limit]
+        ]
+        return out_fb, {
+            "rewritten_query": rewritten_query,
+            "applied_categories": applied_categories,
+            "applied_date_from": applied_date_from,
+            "applied_date_to": applied_date_to,
+        }
+
+
+async def find_similar_papers(
+    paper_uuid: str,
+    limit: int = 20,
+    categories: Optional[List[str]] = None,
+) -> List[Dict[str, Any]]:
+    """
+    Find similar papers by vector only (no date filters, no reranking).
+    Excludes the focal paper from results.
+    Returns list of { point, qdrant_score } in Qdrant order.
+    """
+    if not paper_uuid:
+        return []
+    vec = qdrant_get_vector_by_id(paper_uuid)
+    if not vec:
+        return []
+    # Ensure collection exists before searching
+    try:
+        qdrant_ensure_collection(vector_size=2048, collection="arxiv_papers")
+    except Exception:
+        logger.exception("Failed to ensure Qdrant collection arxiv_papers")
+    hits = qdrant_search_by_vector(query_vector=vec, limit=max(1, limit + 1), categories=categories, collection="arxiv_papers")
+    out: List[Dict[str, Any]] = []
+    for h in hits:
+        if str(h.id) == str(paper_uuid):
+            continue
+        out.append({"point": {"id": h.id, "payload": h.payload}, "qdrant_score": h.score})
+        if len(out) >= limit:
+            break
+    return out
 

@@ -7,6 +7,26 @@ from uuid import UUID, uuid4
 from pydantic import BaseModel, Field
 
 
+# --- Vector search payload for arXiv papers (domain-specific) ---
+
+class ArxivPaperVectorPayload(BaseModel):
+    paper_uuid: str
+    arxiv_id: str
+    slug: Optional[str] = None
+    title: Optional[str] = None
+    authors: Optional[str] = None
+    categories: Optional[List[str]] = None
+    published_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    published_at_ts: Optional[int] = None
+    updated_at_ts: Optional[int] = None
+    embedding_model: Optional[str] = None
+    embedding_dimensions: Optional[int] = None
+    abstract_excerpt: Optional[str] = None
+    has_thumbnail: Optional[bool] = None
+    extra: Optional[dict] = None
+
+
 class ParsedArxivUrl(BaseModel):
     """Result of parsing a user-provided arXiv URL or identifier."""
 
@@ -43,7 +63,7 @@ class ArxivMetadata(BaseModel):
     latest_version: Optional[str] = None
     title: str
     authors: List[ArxivAuthor] = Field(default_factory=list)
-    abstract: str
+    summary: str
     categories: List[str] = Field(default_factory=list)
     doi: Optional[str] = None
     journal_ref: Optional[str] = None

@@ -15,6 +15,12 @@ class Settings(BaseSettings):
     OPENROUTER_API_KEY: str
     CONTAINERPORT_QDRANT: int = 6333
     CONTAINERPORT_QDRANT_GRPC: int = 6334
+
+    # Vector search related
+    VOYAGE_API_KEY: str
+    QDRANT_HOST: str
+    QDRANT_PORT: int
+    QDRANT_API_KEY: str
     
     MYSQL_USER: str
     MYSQL_PASSWORD: str

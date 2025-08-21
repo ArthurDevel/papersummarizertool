@@ -135,3 +135,57 @@ export const listMinimalPapers = async (): Promise<MinimalPaperItem[]> => {
     }
     return response.json();
 }
+
+// --- Search APIs ---
+
+export type SearchQueryRequest = {
+    query: string;
+    is_new?: boolean;
+    selected_categories?: string[] | null;
+    date_from?: string | null;
+    date_to?: string | null;
+    limit?: number;
+};
+
+export type SearchItem = {
+    paper_uuid: string;
+    slug?: string | null;
+    title?: string | null;
+    authors?: string | null;
+    qdrant_score?: number | null;
+    rerank_score?: number | null;
+};
+
+export type SearchQueryResponse = {
+    items: SearchItem[];
+    rewritten_query?: string | null;
+    applied_categories?: string[] | null;
+    applied_date_from?: string | null;
+    applied_date_to?: string | null;
+};
+
+export const searchPapers = async (payload: SearchQueryRequest): Promise<SearchQueryResponse> => {
+    const response = await fetch(`${API_URL}/search/query`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+    }
+    return response.json();
+}
+
+export type SimilarPapersResponse = {
+    items: SearchItem[];
+};
+
+export const getSimilarPapers = async (paperUuid: string, limit: number = 20): Promise<SimilarPapersResponse> => {
+    const response = await fetch(`${API_URL}/search/paper/${encodeURIComponent(paperUuid)}/similar?limit=${encodeURIComponent(String(limit))}`);
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+    }
+    return response.json();
+}
