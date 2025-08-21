@@ -122,7 +122,9 @@ async def rerank(
     for it in items_raw:
         try:
             idx = int(it.get("index"))
-            score = float(it.get("score"))
+            # Voyage returns "relevance_score" (required)
+            raw_score = it.get("relevance_score")
+            score = float(raw_score)
             items.append(RerankItem(index=idx, score=score))
         except Exception:
             continue
@@ -130,13 +132,15 @@ async def rerank(
     usage = data.get("usage") if isinstance(data.get("usage"), dict) else None
     request_id = data.get("id") or data.get("request_id")
     try:
+        top_preview = ", ".join([f"(i={it.index}, s={it.score:.4f})" for it in items[:5]])
         logger.info(
-            "Voyage rerank: model=%s docs=%d top_k=%d returned=%d request_id=%s",
+            "Voyage rerank: model=%s docs=%d top_k=%d returned=%d request_id=%s top=%s",
             model,
             len(documents),
             payload.get("top_k"),
             len(items),
             request_id,
+            top_preview,
         )
     except Exception:
         pass

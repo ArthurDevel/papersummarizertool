@@ -368,8 +368,9 @@ async def search_by_user_query(
     applied_date_to = date_to
     rewritten_query: Optional[str] = None
 
-    # Step A: If is_new, ask LLM for categories/date range and a rewritten query
-    if is_new and not selected_categories and not (date_from or date_to):
+    # Step A: Ask LLM for a rewritten query when no filters are provided
+    # (frontend no longer provides an is_new toggle)
+    if not selected_categories and not (date_from or date_to):
         try:
             cats = _read_arxiv_categories()
             # Load prompts
@@ -529,6 +530,14 @@ async def search_by_user_query(
         top_k = min(limit, len(documents))
         rr = await voyage_rerank(query=query_text, documents=documents, top_k=top_k)
         order = rr.items or []
+        try:
+            logger.info(
+                "Rerank result: items=%s top_preview=%s",
+                len(order),
+                ", ".join([f"(i={it.index}, s={it.score:.4f})" for it in order[:5]]),
+            )
+        except Exception:
+            pass
         out: List[Dict[str, Any]] = []
         if order:
             # Build results in rerank order
@@ -537,11 +546,21 @@ async def search_by_user_query(
                 if 0 <= doc_idx < len(doc_to_hit_index):
                     hit_idx = doc_to_hit_index[doc_idx]
                     hit = raw_hits[hit_idx]
-                    out.append({
+                    entry = {
                         "point": {"id": hit.id, "payload": hit.payload},
                         "qdrant_score": hit.score,
                         "rerank_score": item.score,
-                    })
+                    }
+                    try:
+                        logger.info(
+                            "Rerank mapped: id=%s qdrant=%.6f rerank=%.6f",
+                            str(hit.id),
+                            (hit.score or 0.0),
+                            (item.score or 0.0),
+                        )
+                    except Exception:
+                        pass
+                    out.append(entry)
                 else:
                     try:
                         logger.warning("Rerank index out of range: doc_idx=%s docs=%s", doc_idx, len(doc_to_hit_index))

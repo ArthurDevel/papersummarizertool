@@ -38,6 +38,15 @@ async def search_query(req: SearchQueryRequest) -> SearchQueryResponse:
         authors_val = ", ".join(json.loads(payload.get("authors_json") or "[]"))
         try:
             logger.info(
+                "Search item scores: id=%s qdrant=%s rerank=%s",
+                str((point or {}).get("id")),
+                r.get("qdrant_score"),
+                r.get("rerank_score"),
+            )
+        except Exception:
+            pass
+        try:
+            logger.info(
                 "Search map item: id=%s title=%s authors_json_len=%s abs_url=%s",
                 str((point or {}).get("id")),
                 (payload.get("title") or '')[:80],
@@ -70,6 +79,7 @@ async def search_query(req: SearchQueryRequest) -> SearchQueryResponse:
                 slug=payload.get("slug"),
                 title=payload.get("title"),
                 authors=authors_val,
+                published=payload.get("published"),
                 abs_url=payload.get("abs_url"),
                 summary=payload.get("summary"),
                 qdrant_score=r.get("qdrant_score"),
@@ -140,6 +150,7 @@ async def similar_papers(paper_uuid: str, limit: int = 20) -> SimilarPapersRespo
                 slug=payload.get("slug"),
                 title=payload.get("title"),
                 authors=authors_val,
+                published=payload.get("published"),
                 abs_url=payload.get("abs_url"),
                 summary=payload.get("summary"),
                 qdrant_score=r.get("qdrant_score"),
