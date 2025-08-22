@@ -1,6 +1,6 @@
 import { JobStatusResponse, Paper, type MinimalPaperItem } from '../types/paper';
 
-export const API_URL = '/api'; // The backend is on port 8000, but we're proxying, see next.config.js
+export const API_URL = '/api'; // The backend is on port 8000, but we're proxying, see next.config.js for dev, and /api/[...slug] for prod.
 
 export const processPaper = async (file: File): Promise<JobStatusResponse> => {
     const formData = new FormData();
