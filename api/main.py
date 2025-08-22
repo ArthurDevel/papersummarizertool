@@ -8,6 +8,7 @@ import uvicorn
 
 from api.endpoints import paper_processing_endpoints
 from api.endpoints import search as search_endpoints
+from api.endpoints import user_endpoints
 
 # --- Start Centralized Logging Configuration ---
 # Remove any existing handlers
@@ -46,6 +47,7 @@ app.add_middleware(
 
 app.include_router(paper_processing_endpoints.router, tags=["paper-processing"])
 app.include_router(search_endpoints.router, tags=["search"])
+app.include_router(user_endpoints.router, tags=["users"])
 
 
 @app.on_event("startup")
