@@ -310,6 +310,45 @@ def delete_paper(paper_uuid: UUID, db: Session = Depends(get_session), _admin: b
     return {"deleted": paper_uuid}
 
 
+# --- Paper existence check ---
+
+class CheckArxivResponse(BaseModel):
+    exists: bool
+    viewer_url: Optional[str] = None
+
+
+@router.get("/papers/check_arxiv/{arxiv_id_or_url}", response_model=CheckArxivResponse)
+async def check_arxiv(arxiv_id_or_url: str, db: Session = Depends(get_session)):
+    """
+    Checks if an arXiv paper has been processed and is available, without side-effects.
+    Returns the viewer URL if it exists.
+    """
+    try:
+        norm = await normalize_id(arxiv_id_or_url)
+        arxiv_id = norm.arxiv_id
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid arXiv URL or identifier")
+
+    job = db.query(PaperRow).filter(PaperRow.arxiv_id == arxiv_id).first()
+    if job and job.status == "completed":
+        # Check for JSON file existence as a proxy for being fully processed and available.
+        base_dir = os.path.abspath(os.path.join(os.getcwd(), 'data', 'paperjsons'))
+        json_path = os.path.join(base_dir, f"{job.paper_uuid}.json")
+        if os.path.exists(json_path):
+            # Resolve the latest, non-tombstoned slug for this paper.
+            slug_row = (
+                db.query(PaperSlugRow)
+                .filter(PaperSlugRow.paper_uuid == job.paper_uuid)
+                .filter(PaperSlugRow.tombstone == False)  # noqa: E712
+                .order_by(PaperSlugRow.created_at.desc())
+                .first()
+            )
+            if slug_row:
+                return CheckArxivResponse(exists=True, viewer_url=f"/paper/{slug_row.slug}")
+
+    return CheckArxivResponse(exists=False, viewer_url=None)
+
+
 # --- Request Paper (strict arXiv URL) ---
 
 class RequestArxivRequest(BaseModel):

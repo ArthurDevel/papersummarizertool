@@ -136,6 +136,22 @@ export const listMinimalPapers = async (): Promise<MinimalPaperItem[]> => {
     return response.json();
 }
 
+// --- Public: check paper existence by arXiv ID ---
+export type CheckArxivResponse = {
+    exists: boolean;
+    viewer_url?: string | null;
+};
+
+export const checkArxiv = async (arxivIdOrUrl: string): Promise<CheckArxivResponse> => {
+    const encoded = encodeURIComponent(arxivIdOrUrl);
+    const response = await fetch(`${API_URL}/papers/check_arxiv/${encoded}`);
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+    }
+    return response.json();
+};
+
 // --- Search APIs ---
 
 export type SearchQueryRequest = {

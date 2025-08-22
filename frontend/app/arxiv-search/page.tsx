@@ -2,6 +2,8 @@
 
 import React, { useState } from 'react';
 import { searchPapers, type SearchQueryResponse, type SearchItem } from '../../services/api';
+import Link from 'next/link';
+import { ExternalLink } from 'lucide-react';
 
 export default function SearchPage() {
   const [query, setQuery] = useState('');
@@ -94,8 +96,7 @@ export default function SearchPage() {
 
           <div className="space-y-4">
           {results.map((it) => {
-            const href = it.abs_url || '#';
-            const clickable = Boolean(it.abs_url);
+            const arxivId = (it.abs_url || '').split('/abs/').pop() || null;
             const formattedDate = (() => {
               if (!it.published) return null;
               const d = new Date(it.published);
@@ -115,15 +116,12 @@ export default function SearchPage() {
               return `${month} ${day}${daySuffix(day)}, ${year}`;
             })();
             return (
-              <a
+              <div
                 key={it.paper_uuid}
-                href={href}
-                target={it.abs_url ? '_blank' : undefined}
-                rel={it.abs_url ? 'noopener noreferrer' : undefined}
-                className={`group block border rounded bg-white dark:bg-gray-800 ${clickable ? '' : 'pointer-events-none opacity-60'}`}
+                className="block border rounded bg-white dark:bg-gray-800 p-3 relative"
               >
-                <div className="p-3 relative">
-                  <div className="font-semibold text-gray-900 dark:text-gray-100 group-hover:underline break-words line-clamp-3">{it.title || it.paper_uuid}</div>
+                <div className="pr-24">
+                  <div className="font-semibold text-gray-900 dark:text-gray-100 break-words line-clamp-3">{it.title || it.paper_uuid}</div>
                   {it.authors && (
                     <div className="text-xs text-gray-600 dark:text-gray-400 mt-1 break-words line-clamp-3">{it.authors}</div>
                   )}
@@ -131,13 +129,47 @@ export default function SearchPage() {
                     <div className="text-xs text-gray-500 dark:text-gray-400 mt-2 break-words line-clamp-4">{it.summary}</div>
                   )}
                   <div className="text-[11px] text-gray-400 mt-2">score: {it.rerank_score ?? it.qdrant_score ?? 0}</div>
-                  {formattedDate && (
-                    <div className="absolute bottom-2 right-2 text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 border border-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:border-gray-600">
-                      {formattedDate}
-                    </div>
+                </div>
+                {formattedDate && (
+                  <div className="absolute top-0 right-0 text-[10px] m-3 px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 border border-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:border-gray-600">
+                    {formattedDate}
+                  </div>
+                )}
+                <div className="flex items-center gap-2 mt-4">
+                  <a
+                    href={it.abs_url || '#'}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600"
+                  >
+                    Open on Arxiv
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                  {it.slug ? (
+                    <Link
+                      href={`/paper/${encodeURIComponent(it.slug)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs bg-blue-600 text-white hover:bg-blue-700"
+                    >
+                      Open on PaperSummarizer
+                      <ExternalLink className="w-3 h-3" />
+                    </Link>
+                  ) : (
+                    arxivId ? (
+                      <Link
+                        href={`/checkpaper/${encodeURIComponent(arxivId)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600"
+                      >
+                        Simplify with PaperSummarizer
+                        <ExternalLink className="w-3 h-3" />
+                      </Link>
+                    ) : null
                   )}
                 </div>
-              </a>
+              </div>
             );
           })}
           </div>
