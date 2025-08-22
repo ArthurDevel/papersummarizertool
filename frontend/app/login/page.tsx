@@ -1,9 +1,13 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { authClient } from '../../services/auth';
 
 export default function LoginPage() {
+    const { data: session, isPending, refetch } = authClient.useSession();
+    const router = useRouter();
+
     const [email, setEmail] = useState('');
     const [loading, setLoading] = useState(false);
     const [message, setMessage] = useState('');
@@ -17,8 +21,6 @@ export default function LoginPage() {
 
         const { data, error } = await authClient.signIn.magicLink({
             email,
-            // This is the page the user will be redirected to after clicking
-            // the link in their email. We will create this page next.
             callbackURL: '/auth/callback',
         });
 
@@ -31,6 +33,42 @@ export default function LoginPage() {
             setEmail('');
         }
     };
+
+    const handleSignOut = async () => {
+        setLoading(true);
+        await authClient.signOut();
+        // After signing out, we can either refetch the session which will update the UI,
+        // or just redirect. Let's redirect for a cleaner experience.
+        router.push('/');
+        setLoading(false);
+    };
+
+    if (isPending) {
+        return (
+            <div className="container mx-auto max-w-md p-8 text-center">
+                <p>Loading session...</p>
+            </div>
+        );
+    }
+    
+    if (session) {
+        return (
+            <div className="container mx-auto max-w-md p-8 text-center">
+                <h1 className="text-3xl font-bold mb-6">You are Logged In</h1>
+                <p className="mb-6">
+                    Welcome! You are already authenticated.
+                </p>
+                <button
+                    onClick={handleSignOut}
+                    disabled={loading}
+                    className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:bg-red-300"
+                >
+                    {loading ? 'Signing out...' : 'Sign Out'}
+                </button>
+            </div>
+        );
+    }
+
 
     return (
         <div className="container mx-auto max-w-md p-8">
