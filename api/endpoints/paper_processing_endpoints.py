@@ -8,6 +8,7 @@ from paperprocessor.client import process_paper_pdf
 from shared.db import get_session
 from api.models import PaperRow, RequestedPaperRow, PaperSlugRow
 from shared.arxiv.client import normalize_id, parse_url, fetch_metadata, head_pdf, download_pdf
+from shared.arxiv.models import ArxivMetadata
 import os
 import uuid
 from datetime import datetime
@@ -347,6 +348,28 @@ async def check_arxiv(arxiv_id_or_url: str, db: Session = Depends(get_session)):
                 return CheckArxivResponse(exists=True, viewer_url=f"/paper/{slug_row.slug}")
 
     return CheckArxivResponse(exists=False, viewer_url=None)
+
+
+@router.get("/arxiv-metadata/{arxiv_id_or_url}", response_model=ArxivMetadata)
+async def get_arxiv_metadata(arxiv_id_or_url: str):
+    """
+    Fetches paper metadata directly from the arXiv API.
+    """
+    try:
+        norm = await normalize_id(arxiv_id_or_url)
+        arxiv_id = norm.arxiv_id
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid arXiv URL or identifier")
+
+    try:
+        metadata = await fetch_metadata(arxiv_id)
+        return metadata
+    except ValueError as e:
+        # fetch_metadata raises ValueError if no entry is found
+        raise HTTPException(status_code=404, detail=f"Metadata not found for {arxiv_id}: {e}")
+    except Exception as e:
+        logger.error(f"Failed to fetch metadata for {arxiv_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to fetch metadata from arXiv API")
 
 
 # --- Request Paper (strict arXiv URL) ---

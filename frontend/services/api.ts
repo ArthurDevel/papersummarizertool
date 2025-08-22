@@ -152,6 +152,34 @@ export const checkArxiv = async (arxivIdOrUrl: string): Promise<CheckArxivRespon
     return response.json();
 };
 
+export type ArxivAuthor = {
+    name: string;
+    affiliation?: string | null;
+};
+
+export type ArxivMetadata = {
+    arxiv_id: string;
+    latest_version?: string | null;
+    title: string;
+    authors: ArxivAuthor[];
+    summary: string;
+    categories: string[];
+    doi?: string | null;
+    journal_ref?: string | null;
+    submitted_at?: string | null;
+    updated_at?: string | null;
+};
+
+export const getArxivMetadata = async (arxivIdOrUrl: string): Promise<ArxivMetadata> => {
+    const encoded = encodeURIComponent(arxivIdOrUrl);
+    const response = await fetch(`${API_URL}/arxiv-metadata/${encoded}`);
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+    }
+    return response.json();
+};
+
 // --- Search APIs ---
 
 export type SearchQueryRequest = {
