@@ -65,7 +65,13 @@ export default function SearchPage() {
               <input type="date" min={minDate} max={maxDate} value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="w-full border rounded px-3 py-2 bg-white dark:bg-gray-800" />
             </div>
           </div>
-          <div className="text-xs text-gray-600 dark:text-gray-400">Indexed range: Sep 2022 to today. Results outside this window are not available.</div>
+          <div className="text-sm text-gray-700 dark:text-gray-300 rounded border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/30 p-3 space-y-1">
+            <div className="font-semibold">Indexed coverage</div>
+            <ul className="list-disc list-inside">
+              <li>Date range: 2022 to today</li>
+              <li>Scope: arXiv Artificial Intelligence (cs.AI) only — more coming soon</li>
+            </ul>
+          </div>
           <button type="submit" className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50" disabled={isLoading || !query.trim()}>
             {isLoading ? 'Searching…' : 'Search'}
           </button>

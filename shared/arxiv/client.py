@@ -368,9 +368,9 @@ async def search_by_user_query(
     applied_date_to = date_to
     rewritten_query: Optional[str] = None
 
-    # Step A: Ask LLM for a rewritten query when no filters are provided
+    # Step A: Always ask LLM for a rewritten query (even when filters are provided)
     # (frontend no longer provides an is_new toggle)
-    if not selected_categories and not (date_from or date_to):
+    if True:
         try:
             cats = _read_arxiv_categories()
             # Load prompts

@@ -78,12 +78,12 @@ def _build_filter(
     conditions: List[Any] = []
     if categories:
         conditions.append(
-            FieldCondition(key="categories", match=MatchAny(any=categories))
+            FieldCondition(key="categories_array", match=MatchAny(any=categories))
         )
     if date_from_ts is not None:
-        conditions.append(FieldCondition(key="published_at_ts", range=Range(gte=date_from_ts)))
+        conditions.append(FieldCondition(key="published_epoch", range=Range(gte=date_from_ts)))
     if date_to_ts is not None:
-        conditions.append(FieldCondition(key="published_at_ts", range=Range(lte=date_to_ts)))
+        conditions.append(FieldCondition(key="published_epoch", range=Range(lte=date_to_ts)))
     if not conditions:
         return None
     return Filter(must=conditions)
