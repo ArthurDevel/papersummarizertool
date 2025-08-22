@@ -152,6 +152,33 @@ export const checkArxiv = async (arxivIdOrUrl: string): Promise<CheckArxivRespon
     return response.json();
 };
 
+// --- Public: request paper for processing ---
+export type RequestArxivResponse = {
+    state: 'exists' | 'requested';
+    viewer_url?: string | null;
+};
+
+export const requestArxivPaper = async (url: string): Promise<RequestArxivResponse> => {
+    const response = await fetch(`${API_URL}/papers/request_arxiv`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ url }),
+    });
+    const responseText = await response.text();
+    if (!response.ok) {
+        try {
+            const errorPayload = JSON.parse(responseText);
+            if (errorPayload.detail) {
+                throw new Error(errorPayload.detail);
+            }
+        } catch (e) {
+            // Not a JSON response, fall through to throw generic error
+        }
+        throw new Error(`HTTP error! status: ${response.status}, message: ${responseText}`);
+    }
+    return JSON.parse(responseText);
+};
+
 export type ArxivAuthor = {
     name: string;
     affiliation?: string | null;

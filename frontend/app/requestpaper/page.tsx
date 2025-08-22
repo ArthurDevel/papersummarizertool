@@ -2,11 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-
-type RequestArxivResponse = {
-  state: 'exists' | 'requested';
-  viewer_url?: string | null;
-};
+import { requestArxivPaper, type RequestArxivResponse } from '../../services/api';
 
 export default function RequestPaperPage() {
   const [url, setUrl] = useState('');
@@ -27,18 +23,9 @@ export default function RequestPaperPage() {
     }
     try {
       setIsSubmitting(true);
-      const res = await fetch('/api/papers/request_arxiv', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ url: trimmed }),
-      });
-      const payload: RequestArxivResponse | { detail?: string } = await res.json().catch(() => ({} as any));
-      if (!res.ok) {
-        throw new Error((payload as any)?.detail || `Request failed (${res.status})`);
-      }
-      if ((payload as RequestArxivResponse).state === 'exists' && (payload as RequestArxivResponse).viewer_url) {
-        const urlStr = (payload as RequestArxivResponse).viewer_url || '';
-        try { console.debug('[requestpaper] exists viewer_url from backend', urlStr); } catch {}
+      const payload = await requestArxivPaper(trimmed);
+      if (payload.state === 'exists' && payload.viewer_url) {
+        const urlStr = payload.viewer_url || '';
         if (!urlStr.startsWith('/paper/')) {
           throw new Error('Unexpected viewer URL format from backend');
         }

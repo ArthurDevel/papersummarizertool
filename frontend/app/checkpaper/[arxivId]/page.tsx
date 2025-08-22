@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { checkArxiv, getArxivMetadata, type ArxivMetadata } from '../../../services/api';
+import { checkArxiv, getArxivMetadata, requestArxivPaper, type ArxivMetadata } from '../../../services/api';
 import { ExternalLink } from 'lucide-react';
 
 export default function CheckPaperPage() {
@@ -11,6 +11,9 @@ export default function CheckPaperPage() {
   const [error, setError] = useState<string | null>(null);
   const [checking, setChecking] = useState<boolean>(true);
   const [metadata, setMetadata] = useState<ArxivMetadata | null>(null);
+  const [isRequesting, setIsRequesting] = useState<boolean>(false);
+  const [requestStatus, setRequestStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [requestMessage, setRequestMessage] = useState<string>('');
 
   useEffect(() => {
     const arxivId = (params?.arxivId || '').trim();
@@ -41,6 +44,32 @@ export default function CheckPaperPage() {
 
   const arxivId = (params?.arxivId || '').trim();
   const absUrl = metadata?.arxiv_id ? `https://arxiv.org/abs/${encodeURIComponent(metadata.arxiv_id)}` : (arxivId ? `https://arxiv.org/abs/${encodeURIComponent(arxivId)}` : '#');
+
+  const handleRequestPaper = async () => {
+    if (!absUrl || absUrl === '#') return;
+    setIsRequesting(true);
+    setRequestStatus('idle');
+    setRequestMessage('');
+    try {
+      const res = await requestArxivPaper(absUrl);
+      if (res.state === 'requested') {
+        setRequestStatus('success');
+        setRequestMessage('Thank you for your request! The paper has been added to the request queue.');
+      } else if (res.state === 'exists' && res.viewer_url) {
+        // Should be rare, but handle it
+        router.push(res.viewer_url);
+      } else {
+        setRequestStatus('success');
+        setRequestMessage('This paper is already in our queue or has been processed.');
+      }
+    } catch (e: any) {
+      setRequestStatus('error');
+      setRequestMessage(e?.message || 'An unknown error occurred.');
+    } finally {
+      setIsRequesting(false);
+    }
+  };
+
 
   return (
     <main className="w-full">
@@ -75,12 +104,23 @@ export default function CheckPaperPage() {
               <p className="text-sm text-gray-700 dark:text-gray-300 mb-3">
                 This paper is not yet simplified on PaperSummarizer.
               </p>
-              <a
-                href={'/requestpaper'}
-                className="inline-block px-4 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700"
+              <button
+                onClick={handleRequestPaper}
+                disabled={isRequesting || requestStatus === 'success'}
+                className="inline-block px-4 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Request this paper
-              </a>
+                {isRequesting ? 'Requesting...' : requestStatus === 'success' ? 'Requested!' : 'Request this paper'}
+              </button>
+              {requestStatus === 'success' && (
+                <div className="mt-3 p-3 text-sm rounded-md border border-green-200 bg-green-50 text-green-700 dark:border-green-800 dark:bg-green-900/40 dark:text-green-300">
+                  {requestMessage}
+                </div>
+              )}
+              {requestStatus === 'error' && (
+                <div className="mt-3 p-3 text-sm rounded-md border border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-900/40 dark:text-red-300">
+                  {requestMessage}
+                </div>
+              )}
             </div>
 
             <div className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-md overflow-hidden p-4">
