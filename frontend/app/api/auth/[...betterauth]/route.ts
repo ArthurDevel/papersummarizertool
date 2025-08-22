@@ -31,9 +31,8 @@ const auth = betterAuth({
             }
         })
     ],
-    // It's crucial to set a session secret for signing the cookies.
-    // This should be a long, random string stored in your environment variables.
-    sessionSecret: process.env.AUTH_SESSION_SECRET || 'a-very-weak-secret-for-development-only',
+    // The session secret will be automatically picked up from the
+    // BETTER_AUTH_SECRET environment variable.
     // Set the session duration. Let's set it to 30 days as discussed.
     sessionMaxAge: 60 * 60 * 24 * 30, // 30 days in seconds
 });
