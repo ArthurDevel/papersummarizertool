@@ -1,5 +1,13 @@
 export type CreatedResponse = { created: boolean };
 export type ExistsResponse = { exists: boolean };
+export type UserListItem = {
+  paper_uuid: string;
+  title?: string | null;
+  authors?: string | null;
+  thumbnail_data_url?: string | null;
+  slug?: string | null;
+  created_at?: string | null;
+};
 
 const API_BASE = '/api';
 
@@ -48,6 +56,19 @@ export async function removePaperFromUserList(
   if (!resp.ok) {
     const txt = await resp.text().catch(() => '');
     throw new Error(txt || `Failed to remove from list (${resp.status})`);
+  }
+  return resp.json();
+}
+
+
+export async function getMyUserList(authProviderId: string): Promise<UserListItem[]> {
+  const resp = await fetch(`${API_BASE}/users/me/list`, {
+    headers: buildAuthHeaders(authProviderId),
+    cache: 'no-store' as RequestCache,
+  });
+  if (!resp.ok) {
+    const txt = await resp.text().catch(() => '');
+    throw new Error(txt || `Failed to fetch list (${resp.status})`);
   }
   return resp.json();
 }

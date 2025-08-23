@@ -12,6 +12,7 @@ class UserListItem(BaseModel):
     authors: str | None = None
     thumbnail_data_url: str | None = None
     slug: str | None = None
+    created_at: str | None = None
 
 
 class ExistsResponse(BaseModel):

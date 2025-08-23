@@ -1,12 +1,17 @@
 import Link from 'next/link';
 import React from 'react';
-import { Github } from 'lucide-react';
+import { Github, User as UserIcon } from 'lucide-react';
+import { headers } from 'next/headers';
+import { auth } from '../authentication/server_auth';
 
 type NavBarProps = {
   className?: string;
 };
 
-export default function NavBar({ className = '' }: NavBarProps) {
+export default async function NavBar({ className = '' }: NavBarProps) {
+  const nh = headers();
+  const session = await auth.api.getSession({ headers: nh });
+  const isLoggedIn = Boolean(session?.user?.id);
   return (
     <nav className={`w-full ${className}`}>
       <div className="w-full px-10 pt-7 pb-3 flex items-center justify-between">
@@ -51,16 +56,35 @@ export default function NavBar({ className = '' }: NavBarProps) {
           </li>
         </ul>
 
-        <div className="md:hidden">
-          <button
-            type="button"
-            aria-label="Open menu"
-            className="inline-flex items-center justify-center p-2 rounded-md text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
-          >
-            <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-              <path fillRule="evenodd" d="M3 5h14a1 1 0 100-2H3a1 1 0 100 2zm14 4H3a1 1 0 000 2h14a1 1 0 100-2zm0 6H3a1 1 0 000 2h14a1 1 0 100-2z" clipRule="evenodd" />
-            </svg>
-          </button>
+        <div className="flex items-center gap-3">
+          {isLoggedIn ? (
+            <Link
+              href="/user"
+              className="inline-flex items-center justify-center w-9 h-9 rounded-full border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+              title="Your account"
+              aria-label="Your account"
+            >
+              <UserIcon size={18} />
+            </Link>
+          ) : (
+            <Link
+              href="/login"
+              className="px-3 py-1.5 rounded-md text-sm border border-gray-300 dark:border-gray-700 text-gray-800 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
+            >
+              Log in
+            </Link>
+          )}
+          <div className="md:hidden">
+            <button
+              type="button"
+              aria-label="Open menu"
+              className="inline-flex items-center justify-center p-2 rounded-md text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
+            >
+              <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path fillRule="evenodd" d="M3 5h14a1 1 0 100-2H3a1 1 0 100 2zm14 4H3a1 1 0 000 2h14a1 1 0 100-2zm0 6H3a1 1 0 000 2h14a1 1 0 100-2z" clipRule="evenodd" />
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
     </nav>

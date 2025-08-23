@@ -98,16 +98,16 @@ async def list_user_entries(db: Session, auth_provider_id: str) -> List[Dict[str
     if not user:
         raise ValueError("User not found")
 
-    # Join user_lists -> papers
-    entries = (
-        db.query(PaperRow)
+    # Join user_lists -> papers (include list row to expose created_at)
+    rows = (
+        db.query(PaperRow, UserListRow)
         .join(UserListRow, UserListRow.paper_id == PaperRow.id)
         .filter(UserListRow.user_id == user.id)
         .all()
     )
 
     # Fetch slugs for these papers
-    paper_uuid_list = [p.paper_uuid for p in entries]
+    paper_uuid_list = [p.paper_uuid for (p, _ul) in rows]
     slugs_by_uuid: Dict[str, str] = {}
     if paper_uuid_list:
         slug_rows = (
@@ -122,7 +122,7 @@ async def list_user_entries(db: Session, auth_provider_id: str) -> List[Dict[str
                 slugs_by_uuid[r.paper_uuid] = r.slug
 
     items: List[Dict[str, Any]] = []
-    for p in entries:
+    for (p, ul) in rows:
         items.append(
             {
                 "paper_uuid": p.paper_uuid,
@@ -130,6 +130,7 @@ async def list_user_entries(db: Session, auth_provider_id: str) -> List[Dict[str
                 "authors": getattr(p, "authors", None),
                 "thumbnail_data_url": getattr(p, "thumbnail_data_url", None),
                 "slug": slugs_by_uuid.get(p.paper_uuid),
+                "created_at": (ul.created_at.isoformat() if getattr(ul, "created_at", None) else None),
             }
         )
     return items
