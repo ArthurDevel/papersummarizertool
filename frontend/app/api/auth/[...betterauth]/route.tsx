@@ -5,7 +5,7 @@ import { toNextJsHandler } from "better-auth/next-js";
 import { magicLink } from "better-auth/plugins";
 import { APIError } from "better-auth/api";
 import { Resend } from 'resend';
-import { MagicLinkEmail } from '../../../../emails/magic-link-email';
+import { MagicLinkEmail, AddToListMagicLinkEmail } from '../../../../authentication/emails';
 import { render } from '@react-email/render';
 
 
@@ -14,20 +14,29 @@ const auth = betterAuth({
         magicLink({
             sendMagicLink: async ({ email, token, url }, request) => {
                 const resend = new Resend(process.env.RESEND_API_KEY);
-                // This is where you would implement your email sending logic.
                 try {
-                    const emailHtml = await render(<MagicLinkEmail magicLink={url} />);
+                    const isAddToList = (request?.headers?.get('x-email-template') || '').toLowerCase() === 'addtolist';
+                    const paperTitle = request?.headers?.get('x-paper-title') || undefined;
+
+                    let subject: string;
+                    let html: string;
+
+                    if (isAddToList) {
+                        subject = `Sign in to add “${(paperTitle || '').toString()}”`;
+                        subject = subject.replace(/[\r\n]+/g, ' ').replace(/\s{2,}/g, ' ').trim().slice(0, 200);
+                        html = await render(<AddToListMagicLinkEmail magicLink={url} paperTitle={paperTitle} />);
+                    } else {
+                        subject = 'Your Magic Link to Sign In';
+                        html = await render(<MagicLinkEmail magicLink={url} />);
+                    }
 
                     await resend.emails.send({
                         from: 'PaperSummarizer <login@resend.dev>', // TODO: Replace with your domain
                         to: [email],
-                        subject: 'Your Magic Link to Sign In',
-                        html: emailHtml,
+                        subject,
+                        html,
                     });
                 } catch (error) {
-                    console.error("Failed to send magic link email:", error);
-                    // Throw an error to prevent the user from being logged in
-                    // if the email fails to send.
                     throw new APIError("INTERNAL_SERVER_ERROR", {
                         message: "Could not send the magic link email. Please try again later.",
                     });

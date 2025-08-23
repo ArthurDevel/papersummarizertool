@@ -4,6 +4,9 @@ import { useEffect, useState, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import { Paper, Section, Figure, Table, type MinimalPaperItem } from '../../../types/paper';
 import { listMinimalPapers } from '../../../services/api';
+import { authClient } from '../../../services/auth';
+import { setPostLoginCookie } from '../../../authentication/postLogin';
+import { sendAddToListMagicLink } from '../../../authentication/magicLink';
 import { Loader, ExternalLink } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -21,6 +24,13 @@ export default function LayoutTestsPage() {
   const [paperData, setPaperData] = useState<Paper | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const { data: session } = authClient.useSession();
+  const [isInList, setIsInList] = useState<boolean>(false);
+  const [checkInListPending, setCheckInListPending] = useState<boolean>(false);
+  const [addPending, setAddPending] = useState<boolean>(false);
+  const [addError, setAddError] = useState<string | null>(null);
+  const [showEmailForm, setShowEmailForm] = useState<boolean>(false);
+  const [emailForAdd, setEmailForAdd] = useState<string>('');
   const [availableFiles, setAvailableFiles] = useState<string[]>([]);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [similarItems, setSimilarItems] = useState<Array<{ key: string; title: string | null; authors: string | null; thumbnail_data_url: string | null; slug: string | null }>>([]);
@@ -105,6 +115,72 @@ export default function LayoutTestsPage() {
       cancelled = true;
     };
   }, [params]);
+
+  // If logged in and paper is loaded, check if it's already in user's list
+  useEffect(() => {
+    const run = async () => {
+      if (!session?.user?.id || !paperData?.paper_id) return;
+      try {
+        setCheckInListPending(true);
+        const headers = new Headers();
+        headers.set('X-Auth-Provider-Id', session.user.id);
+        const resp = await fetch(`/api/users/me/list/${encodeURIComponent(paperData.paper_id)}`, { headers, cache: 'no-store' });
+        if (!resp.ok) return;
+        const json = await resp.json();
+        setIsInList(Boolean(json?.exists));
+      } catch {
+        // ignore
+      } finally {
+        setCheckInListPending(false);
+      }
+    };
+    run();
+  }, [session?.user?.id, paperData?.paper_id]);
+
+  const handleAddToList = async () => {
+    setAddError(null);
+    if (!paperData?.paper_id) {
+      setAddError('Missing paper id');
+      return;
+    }
+    if (!session?.user?.id) {
+      setShowEmailForm((v) => !v);
+      return;
+    }
+    try {
+      setAddPending(true);
+      const headers = new Headers();
+      headers.set('X-Auth-Provider-Id', session.user.id);
+      const resp = await fetch(`/api/users/me/list/${encodeURIComponent(paperData.paper_id)}`, { method: 'POST', headers });
+      if (!resp.ok) {
+        const txt = await resp.text();
+        throw new Error(txt || `Failed to add (status ${resp.status})`);
+      }
+      setIsInList(true);
+    } catch (e: any) {
+      setAddError(e?.message || 'Failed to add to list');
+    } finally {
+      setAddPending(false);
+    }
+  };
+
+  const handleSendMagicLinkForAdd = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAddError(null);
+    try {
+      if (!paperData?.paper_id) throw new Error('Missing paper id');
+      const redirect = `/paper/${encodeURIComponent(params?.slug || '')}`;
+      setPostLoginCookie({
+        method: 'POST',
+        url: `/api/users/me/list/${encodeURIComponent(paperData.paper_id)}`,
+        redirect,
+      });
+      await sendAddToListMagicLink(emailForAdd, paperData?.title || '');
+      setShowEmailForm(false);
+    } catch (e: any) {
+      setAddError(e?.message || 'Failed to send magic link');
+    }
+  };
 
   // Load metadata for similar papers (title/authors/thumbnail) via minimal endpoint
   useEffect(() => {
@@ -396,6 +472,39 @@ export default function LayoutTestsPage() {
                       <ExternalLink className="w-3.5 h-3.5" />
                       Open on arXiv
                     </a>
+                  )}
+                  <div className="mt-3 flex items-center gap-3">
+                    <button
+                      onClick={handleAddToList}
+                      disabled={addPending || checkInListPending || isInList}
+                      className={`px-3 py-1.5 text-sm rounded-md border ${isInList ? 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 cursor-default' : 'bg-indigo-600 text-white hover:bg-indigo-700 border-transparent'}`}
+                      title={isInList ? 'Already in your list' : 'Add this paper to your list'}
+                    >
+                      {addPending || checkInListPending ? (
+                        <span className="inline-flex items-center gap-2"><Loader className="animate-spin w-4 h-4" /> Processing…</span>
+                      ) : isInList ? 'In your list' : '+ Add to list'}
+                    </button>
+                    {!session?.user?.id && showEmailForm && (
+                      <form onSubmit={handleSendMagicLinkForAdd} className="flex items-center gap-2">
+                        <input
+                          type="email"
+                          required
+                          placeholder="your@email"
+                          value={emailForAdd}
+                          onChange={(e) => setEmailForAdd(e.target.value)}
+                          className="appearance-none block w-56 px-3 py-1.5 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                        />
+                        <button
+                          type="submit"
+                          className="px-3 py-1.5 text-sm rounded-md border bg-indigo-600 text-white hover:bg-indigo-700 border-transparent"
+                        >
+                          Send magic link
+                        </button>
+                      </form>
+                    )}
+                  </div>
+                  {addError && (
+                    <div className="mt-2 p-2 bg-red-100 border border-red-300 text-red-700 rounded text-xs">{addError}</div>
                   )}
                 </div>
               </div>
