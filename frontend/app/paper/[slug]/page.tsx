@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import { Paper, Section, Figure, Table, type MinimalPaperItem } from '../../../types/paper';
 import { listMinimalPapers } from '../../../services/api';
 import { authClient } from '../../../services/auth';
+import { addPaperToUserList, isPaperInUserList } from '../../../services/users';
 import { setPostLoginCookie } from '../../../authentication/postLogin';
 import { sendAddToListMagicLink } from '../../../authentication/magicLink';
 import { Loader, ExternalLink } from 'lucide-react';
@@ -122,12 +123,8 @@ export default function LayoutTestsPage() {
       if (!session?.user?.id || !paperData?.paper_id) return;
       try {
         setCheckInListPending(true);
-        const headers = new Headers();
-        headers.set('X-Auth-Provider-Id', session.user.id);
-        const resp = await fetch(`/api/users/me/list/${encodeURIComponent(paperData.paper_id)}`, { headers, cache: 'no-store' });
-        if (!resp.ok) return;
-        const json = await resp.json();
-        setIsInList(Boolean(json?.exists));
+        const exists = await isPaperInUserList(paperData.paper_id, session.user.id);
+        setIsInList(Boolean(exists));
       } catch {
         // ignore
       } finally {
@@ -149,13 +146,7 @@ export default function LayoutTestsPage() {
     }
     try {
       setAddPending(true);
-      const headers = new Headers();
-      headers.set('X-Auth-Provider-Id', session.user.id);
-      const resp = await fetch(`/api/users/me/list/${encodeURIComponent(paperData.paper_id)}`, { method: 'POST', headers });
-      if (!resp.ok) {
-        const txt = await resp.text();
-        throw new Error(txt || `Failed to add (status ${resp.status})`);
-      }
+      await addPaperToUserList(paperData.paper_id, session.user.id);
       setIsInList(true);
     } catch (e: any) {
       setAddError(e?.message || 'Failed to add to list');

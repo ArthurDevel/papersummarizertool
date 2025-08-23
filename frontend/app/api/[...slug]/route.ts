@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { headers as nextHeaders } from 'next/headers';
+import { auth } from '../../../authentication/server_auth';
 
 // The base URL of your Python backend, constructed using the same environment
 const BACKEND_URL = `http://127.0.0.1:${process.env.NEXT_PUBLIC_CONTAINERPORT_API}`;
@@ -11,10 +13,28 @@ const handler = async (req: NextRequest) => {
     const fullBackendUrl = `${BACKEND_URL}${path}${req.nextUrl.search}`;
 
     try {
+        // Protect user list endpoints: inject verified auth provider id from session
+        const isUserList = /^\/api\/users\/me\/list\//.test(req.nextUrl.pathname);
+        console.log('[proxy] incoming', { path: req.nextUrl.pathname, isUserList });
+        let forwardHeaders: HeadersInit = req.headers;
+        if (isUserList) {
+            const nh = await nextHeaders();
+            const cookieFromReq = req.headers.get('cookie') || '';
+            const cookieFromNext = nh.get('cookie') || '';
+            console.log('[proxy] cookies', { fromReq: cookieFromReq.length > 0, fromNext: cookieFromNext.length > 0 });
+            const session = await auth.api.getSession({ headers: nh });
+            console.log('[proxy] session', { hasSession: Boolean(session), userId: session?.user?.id });
+            if (!session) {
+                return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
+            }
+            const h = new Headers(req.headers);
+            h.set('X-Auth-Provider-Id', session.user.id);
+            forwardHeaders = h;
+        }
         // Create a new request to the backend.
         const backendResponse = await fetch(fullBackendUrl, {
             method: req.method,
-            headers: req.headers,
+            headers: forwardHeaders,
             body: req.body,
             // duplex is required for streaming the body.
             // @ts-ignore
