@@ -25,3 +25,10 @@ class CreatedResponse(BaseModel):
 
 class DeletedResponse(BaseModel):
     deleted: bool
+
+
+class UserRequestItem(BaseModel):
+    arxiv_id: str
+    title: str | None = None
+    authors: str | None = None
+    created_at: str | None = None

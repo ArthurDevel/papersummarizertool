@@ -4,7 +4,7 @@ from typing import List, Dict, Any
 from sqlalchemy.orm import Session
 
 from api.models import PaperRow, PaperSlugRow
-from users.models import UserRow, UserListRow
+from users.models import UserRow, UserListRow, UserRequestRow
 
 logger = logging.getLogger(__name__)
 
@@ -134,3 +134,101 @@ async def list_user_entries(db: Session, auth_provider_id: str) -> List[Dict[str
             }
         )
     return items
+
+
+async def add_request_entry(db: Session, auth_provider_id: str, arxiv_id: str) -> Dict[str, bool]:
+    """
+    Add a user request for an arXiv id. Idempotent: returns created=False if already present.
+    """
+    user = db.query(UserRow).filter(UserRow.id == auth_provider_id).first()
+    if not user:
+        raise ValueError("User not found")
+    existing = (
+        db.query(UserRequestRow)
+        .filter(UserRequestRow.user_id == user.id, UserRequestRow.arxiv_id == arxiv_id)
+        .first()
+    )
+    if existing:
+        return {"created": False}
+    # Try enrich via arXiv metadata
+    title: str | None = None
+    authors: str | None = None
+    try:
+        from shared.arxiv.client import fetch_metadata
+        # Normalize to base id if version present (e.g., 2507.18071v2 -> 2507.18071)
+        base_id = arXiv_base_id(arxiv_id)
+        meta = await fetch_metadata(base_id)
+        title = getattr(meta, 'title', None)
+        # Join author names
+        try:
+            author_names = [getattr(a, 'name', '') for a in getattr(meta, 'authors', [])]
+            authors = ", ".join([n for n in author_names if n]) or None
+        except Exception:
+            authors = None
+        arxiv_id = base_id
+    except Exception:
+        # Best-effort: still create entry without metadata
+        pass
+    entry = UserRequestRow(user_id=user.id, arxiv_id=arxiv_id, title=title, authors=authors)
+    db.add(entry)
+    db.commit()
+    return {"created": True}
+
+
+async def remove_request_entry(db: Session, auth_provider_id: str, arxiv_id: str) -> Dict[str, bool]:
+    user = db.query(UserRow).filter(UserRow.id == auth_provider_id).first()
+    if not user:
+        raise ValueError("User not found")
+    q = (
+        db.query(UserRequestRow)
+        .filter(UserRequestRow.user_id == user.id, UserRequestRow.arxiv_id == arxiv_id)
+    )
+    deleted = q.delete()
+    db.commit()
+    return {"deleted": bool(deleted)}
+
+
+async def does_request_exist(db: Session, auth_provider_id: str, arxiv_id: str) -> Dict[str, bool]:
+    user = db.query(UserRow).filter(UserRow.id == auth_provider_id).first()
+    if not user:
+        raise ValueError("User not found")
+    exists = (
+        db.query(UserRequestRow)
+        .filter(UserRequestRow.user_id == user.id, UserRequestRow.arxiv_id == arxiv_id)
+        .first()
+        is not None
+    )
+    return {"exists": exists}
+
+
+async def list_user_requests(db: Session, auth_provider_id: str) -> List[Dict[str, Any]]:
+    user = db.query(UserRow).filter(UserRow.id == auth_provider_id).first()
+    if not user:
+        raise ValueError("User not found")
+    rows = (
+        db.query(UserRequestRow)
+        .filter(UserRequestRow.user_id == user.id)
+        .all()
+    )
+    items: List[Dict[str, Any]] = []
+    for r in rows:
+        items.append({
+            "arxiv_id": r.arxiv_id,
+            "title": getattr(r, 'title', None),
+            "authors": getattr(r, 'authors', None),
+            "created_at": (r.created_at.isoformat() if getattr(r, "created_at", None) else None),
+        })
+    return items
+
+
+def arXiv_base_id(id_or_url: str) -> str:
+    """Extract base arXiv id without version from an id or abs/pdf URL."""
+    s = (id_or_url or '').strip()
+    # If URL, extract terminal segment
+    import re
+    m = re.search(r"/(?:abs|pdf)/([^/?#]+)", s)
+    if m:
+        s = m.group(1)
+    # Strip version suffix like v2
+    s = re.sub(r"v\d+$", "", s)
+    return s

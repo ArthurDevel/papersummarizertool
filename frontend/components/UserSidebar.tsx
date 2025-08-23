@@ -11,6 +11,7 @@ type SidebarItem = {
 
 const ITEMS: SidebarItem[] = [
   { href: '/user/list', label: 'My list' },
+  { href: '/user/requests', label: 'My requests' },
   // Future: { href: '/user/settings', label: 'Settings' },
 ];
 

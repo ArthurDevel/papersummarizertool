@@ -6,6 +6,7 @@ from users import client as users_client
 from api.types.user_api_models import (
     SyncUserPayload,
     UserListItem,
+    UserRequestItem,
     ExistsResponse,
     CreatedResponse,
     DeletedResponse,
@@ -91,6 +92,66 @@ async def check_in_list(
     user_id = _require_auth_provider_id(x_auth_provider_id)
     try:
         result = await users_client.is_entry_present(db=db, auth_provider_id=user_id, paper_uuid=paper_uuid)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    return ExistsResponse(**result)
+
+
+# --- User Requests ---
+
+@router.post("/users/me/requests/{arxiv_id}", response_model=CreatedResponse)
+async def add_request(
+    arxiv_id: str,
+    response: Response,
+    db: Session = Depends(get_session),
+    x_auth_provider_id: str | None = Header(default=None, convert_underscores=False, alias="X-Auth-Provider-Id"),
+):
+    user_id = _require_auth_provider_id(x_auth_provider_id)
+    try:
+        result = await users_client.add_request_entry(db=db, auth_provider_id=user_id, arxiv_id=arxiv_id)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    if result.get("created"):
+        response.status_code = status.HTTP_201_CREATED
+    return CreatedResponse(created=bool(result.get("created")))
+
+
+@router.delete("/users/me/requests/{arxiv_id}", response_model=DeletedResponse)
+async def remove_request(
+    arxiv_id: str,
+    db: Session = Depends(get_session),
+    x_auth_provider_id: str | None = Header(default=None, convert_underscores=False, alias="X-Auth-Provider-Id"),
+):
+    user_id = _require_auth_provider_id(x_auth_provider_id)
+    try:
+        result = await users_client.remove_request_entry(db=db, auth_provider_id=user_id, arxiv_id=arxiv_id)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    return DeletedResponse(deleted=bool(result.get("deleted")))
+
+
+@router.get("/users/me/requests", response_model=List[UserRequestItem])
+async def list_my_requests(
+    db: Session = Depends(get_session),
+    x_auth_provider_id: str | None = Header(default=None, convert_underscores=False, alias="X-Auth-Provider-Id"),
+):
+    user_id = _require_auth_provider_id(x_auth_provider_id)
+    try:
+        items = await users_client.list_user_requests(db=db, auth_provider_id=user_id)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    return [UserRequestItem(**it) for it in items]
+
+
+@router.get("/users/me/requests/{arxiv_id}", response_model=ExistsResponse)
+async def does_request_exist(
+    arxiv_id: str,
+    db: Session = Depends(get_session),
+    x_auth_provider_id: str | None = Header(default=None, convert_underscores=False, alias="X-Auth-Provider-Id"),
+):
+    user_id = _require_auth_provider_id(x_auth_provider_id)
+    try:
+        result = await users_client.does_request_exist(db=db, auth_provider_id=user_id, arxiv_id=arxiv_id)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     return ExistsResponse(**result)

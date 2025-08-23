@@ -31,3 +31,19 @@ class UserListRow(Base):
     )
 
 
+
+class UserRequestRow(Base):
+    __tablename__ = "user_requests"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    user_id = Column(String(128), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    arxiv_id = Column(String(64), nullable=False)
+    title = Column(String(512), nullable=True)
+    authors = Column(String(2048), nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "arxiv_id", name="uq_user_requests_user_arxiv"),
+        Index("ix_user_requests_user_id", "user_id"),
+        Index("ix_user_requests_arxiv_id", "arxiv_id"),
+    )

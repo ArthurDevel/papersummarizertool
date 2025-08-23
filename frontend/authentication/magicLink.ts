@@ -25,3 +25,15 @@ export async function sendLoginMagicLink(email: string) {
 }
 
 
+export async function sendRequestPaperMagicLink(email: string, arxivAbsUrl?: string) {
+  const headers = new Headers();
+  headers.set('x-email-template', 'requestpaper');
+  if (arxivAbsUrl) headers.set('x-arxiv-abs-url', arxivAbsUrl);
+  await authClient.signIn.magicLink({
+    email,
+    callbackURL: '/auth/callback',
+    fetchOptions: { headers },
+  });
+}
+
+

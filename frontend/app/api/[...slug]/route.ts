@@ -13,11 +13,12 @@ const handler = async (req: NextRequest) => {
     const fullBackendUrl = `${BACKEND_URL}${path}${req.nextUrl.search}`;
 
     try {
-        // Protect user list endpoints (base path and subpaths): inject verified auth provider id from session
+        // Protect user list and request endpoints (base path and subpaths): inject verified auth provider id from session
         const isUserList = /^\/api\/users\/me\/list(?:\/|$)/.test(req.nextUrl.pathname);
-        console.log('[proxy] incoming', { path: req.nextUrl.pathname, isUserList });
+        const isUserRequests = /^\/api\/users\/me\/requests(?:\/|$)/.test(req.nextUrl.pathname);
+        console.log('[proxy] incoming', { path: req.nextUrl.pathname, isUserList, isUserRequests });
         let forwardHeaders: HeadersInit = req.headers;
-        if (isUserList) {
+        if (isUserList || isUserRequests) {
             const nh = await nextHeaders();
             const cookieFromReq = req.headers.get('cookie') || '';
             const cookieFromNext = nh.get('cookie') || '';

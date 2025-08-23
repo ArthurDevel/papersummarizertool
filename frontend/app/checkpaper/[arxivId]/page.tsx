@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { checkArxiv, getArxivMetadata, requestArxivPaper, type ArxivMetadata } from '../../../services/api';
 import { ExternalLink } from 'lucide-react';
+import RequestPaperButton from '../../../components/RequestPaperButton';
 
 export default function CheckPaperPage() {
   const params = useParams<{ arxivId: string }>();
@@ -102,41 +103,9 @@ export default function CheckPaperPage() {
             </div>
 
             <div className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-md overflow-hidden p-4">
-              <p className="text-sm text-gray-700 dark:text-gray-300 mb-3">
-                This paper is not yet simplified on PaperSummarizer.
-              </p>
-              <div className="flex flex-col space-y-3">
-                <div>
-                  <label htmlFor="email" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Get notified</label>
-                  <input
-                    type="email"
-                    name="email"
-                    id="email"
-                    value={notificationEmail}
-                    onChange={(e) => setNotificationEmail(e.target.value)}
-                    className="mt-1 block w-full px-3 py-2 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 sm:text-sm"
-                    placeholder="you@example.com"
-                  />
-                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Will only be used to notify you of this paper, nothing else</p>
-                </div>
-                <button
-                  onClick={handleRequestPaper}
-                  disabled={isRequesting || requestStatus === 'success'}
-                  className="inline-block px-4 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isRequesting ? 'Requesting...' : requestStatus === 'success' ? 'Requested!' : 'Request this paper'}
-                </button>
-              </div>
-              {requestStatus === 'success' && (
-                <div className="mt-3 p-3 text-sm rounded-md border border-green-200 bg-green-50 text-green-700 dark:border-green-800 dark:bg-green-900/40 dark:text-green-300">
-                  {requestMessage}
-                </div>
-              )}
-              {requestStatus === 'error' && (
-                <div className="mt-3 p-3 text-sm rounded-md border border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-900/40 dark:text-red-300">
-                  {requestMessage}
-                </div>
-              )}
+              <h2 className="text-xl font-semibold mb-2">This paper is not yet available on PaperSummarizer</h2>
+              <p className="text-sm text-gray-700 dark:text-gray-300 mb-3">Request this paper for processing using the button below</p>
+              <RequestPaperButton arxivId={(metadata?.arxiv_id || arxivId)} />
             </div>
 
             <div className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-md overflow-hidden p-4">

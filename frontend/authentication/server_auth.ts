@@ -5,6 +5,7 @@ import { Resend } from 'resend';
 import { render } from '@react-email/render';
 import { MagicLinkEmail } from '../authentication/emails/magic-link-email';
 import { AddToListMagicLinkEmail } from '../authentication/emails/add-to-list-magic-link-email';
+import { RequestPaperMagicLinkEmail } from '../authentication/emails/request-paper-magic-link-email';
 import React from 'react';
 
 // Single BetterAuth server instance shared across handlers
@@ -14,8 +15,11 @@ export const auth = betterAuth({
       sendMagicLink: async ({ email, token, url }, request) => {
         const resend = new Resend(process.env.RESEND_API_KEY);
         try {
-          const isAddToList = (request?.headers?.get('x-email-template') || '').toLowerCase() === 'addtolist';
+          const template = (request?.headers?.get('x-email-template') || '').toLowerCase();
+          const isAddToList = template === 'addtolist';
+          const isRequestPaper = template === 'requestpaper';
           const paperTitle = request?.headers?.get('x-paper-title') || undefined;
+          const arxivAbsUrl = request?.headers?.get('x-arxiv-abs-url') || undefined;
 
           let subject: string;
           let html: string;
@@ -24,6 +28,10 @@ export const auth = betterAuth({
             subject = `Sign in to add “${(paperTitle || '').toString()}”`;
             subject = subject.replace(/[\r\n]+/g, ' ').replace(/\s{2,}/g, ' ').trim().slice(0, 200);
             const element = React.createElement(AddToListMagicLinkEmail as any, { magicLink: url, paperTitle });
+            html = await render(element);
+          } else if (isRequestPaper) {
+            subject = 'Confirm your notification for this paper';
+            const element = React.createElement(RequestPaperMagicLinkEmail as any, { magicLink: url, arxivAbsUrl });
             html = await render(element);
           } else {
             subject = 'Your Magic Link to Sign In';
