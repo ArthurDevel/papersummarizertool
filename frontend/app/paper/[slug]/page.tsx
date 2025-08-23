@@ -45,6 +45,7 @@ export default function LayoutTestsPage() {
   const pageImageContainerRef = useRef<HTMLDivElement | null>(null);
   const pageImageRef = useRef<HTMLImageElement | null>(null);
   const [modalZoom, setModalZoom] = useState<number>(1);
+  const [readingMinutes, setReadingMinutes] = useState<number | null>(null);
 
   const fetchIndexAndMaybeData = async (explicitFile?: string | null) => {
     try {
@@ -112,6 +113,30 @@ export default function LayoutTestsPage() {
       cancelled = true;
     };
   }, [params]);
+
+  // Compute estimated reading time (~200 words/min) based on rewritten section content
+  useEffect(() => {
+    if (!paperData) {
+      setReadingMinutes(null);
+      return;
+    }
+    try {
+      const texts = (paperData.sections || []).map((s: any) => (s?.rewritten_content || ''));
+      const combined = texts.filter(Boolean).join(' ');
+      const words = (combined.match(/[^\s]+/g) || []).length;
+      const minutes = Math.max(1, Math.round(words / 200));
+      setReadingMinutes(minutes);
+    } catch {
+      setReadingMinutes(null);
+    }
+  }, [paperData]);
+
+  // Log paper id instead of displaying it
+  useEffect(() => {
+    if (paperData?.paper_id) {
+      try { console.log('[paper] id', paperData.paper_id); } catch {}
+    }
+  }, [paperData?.paper_id]);
 
   // If logged in and paper is loaded, check if it's already in user's list
   useEffect(() => {
@@ -410,7 +435,10 @@ export default function LayoutTestsPage() {
                   {paperData.authors && (
                     <p className="text-sm text-gray-700 dark:text-gray-300 mb-1 break-words whitespace-normal">{paperData.authors}</p>
                   )}
-                  <p className="text-xs text-gray-500 dark:text-gray-400 break-all">Paper ID: {paperData.paper_id}</p>
+                  {typeof readingMinutes === 'number' && (
+                    <p className="text-xs text-gray-500 dark:text-gray-400">📖 {readingMinutes} min read</p>
+                  )}
+                  
                   {paperData.arxiv_url && (
                     <a
                       href={paperData.arxiv_url}
