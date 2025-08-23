@@ -1,7 +1,8 @@
 'use client';
 
 import React from 'react';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
+import { authClient } from '../services/auth';
 
 type SidebarItem = {
   href: string;
@@ -15,6 +16,13 @@ const ITEMS: SidebarItem[] = [
 
 export default function UserSidebar() {
   const pathname = usePathname();
+  const router = useRouter();
+  const handleLogout = async () => {
+    try {
+      await authClient.signOut();
+    } catch {}
+    router.replace('/');
+  };
   return (
     <div className="flex flex-col h-full min-h-0">
       <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
@@ -41,6 +49,14 @@ export default function UserSidebar() {
           })}
         </ul>
       </nav>
+      <div className="border-t border-gray-200 dark:border-gray-700 p-2">
+        <button
+          onClick={handleLogout}
+          className="w-full text-left px-3 py-2 rounded-md text-sm border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200"
+        >
+          Log out
+        </button>
+      </div>
     </div>
   );
 }
