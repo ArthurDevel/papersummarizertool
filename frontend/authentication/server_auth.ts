@@ -1,4 +1,5 @@
 import { betterAuth } from "better-auth";
+import { createPool } from 'mysql2/promise';
 import { magicLink } from "better-auth/plugins";
 import { APIError } from "better-auth/api";
 import { Resend } from 'resend';
@@ -9,7 +10,18 @@ import { RequestPaperMagicLinkEmail } from '../authentication/emails/request-pap
 import React from 'react';
 
 // Single BetterAuth server instance shared across handlers
+const authDbPool = createPool({
+  host: process.env.AUTH_MYSQL_HOST,
+  port: Number(process.env.AUTH_MYSQL_PORT),
+  user: process.env.AUTH_MYSQL_USER,
+  password: process.env.AUTH_MYSQL_PASSWORD,
+  database: process.env.AUTH_MYSQL_DATABASE,
+  waitForConnections: true,
+  connectionLimit: 10,
+});
+
 export const auth = betterAuth({
+  database: authDbPool as any,
   plugins: [
     magicLink({
       sendMagicLink: async ({ email, token, url }, request) => {
