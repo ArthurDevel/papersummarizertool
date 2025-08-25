@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import BigInteger, Column, DateTime, Integer, String, Text, UniqueConstraint, Float, Boolean
+from sqlalchemy import BigInteger, Column, DateTime, Integer, String, Text, UniqueConstraint, Float, Boolean, Index
 from sqlalchemy.dialects.mysql import MEDIUMTEXT
 
 from shared.db import Base
@@ -21,6 +21,8 @@ class PaperRow(Base):
     authors = Column(Text, nullable=True)
     status = Column(String(20), nullable=False, default="not_started")
     error_message = Column(Text, nullable=True)
+    # Which user initiated processing (auth provider id). Nullable for admin/system jobs.
+    initiated_by_user_id = Column(String(128), nullable=True)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     started_at = Column(DateTime, nullable=True)
@@ -36,6 +38,7 @@ class PaperRow(Base):
     __table_args__ = (
         UniqueConstraint("paper_uuid", name="uq_papers_paper_uuid"),
         UniqueConstraint("arxiv_id", name="uq_papers_arxiv_id"),
+        Index("ix_papers_initiated_by_user_id", "initiated_by_user_id"),
     )
 
 

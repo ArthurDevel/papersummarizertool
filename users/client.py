@@ -136,6 +136,50 @@ async def list_user_entries(db: Session, auth_provider_id: str) -> List[Dict[str
     return items
 
 
+async def does_any_user_request_exist(db: Session, arxiv_id_or_url: str) -> Dict[str, bool]:
+    """
+    Returns whether any user has requested the paper identified by this arXiv id or URL.
+    """
+    base_id = arXiv_base_id(arxiv_id_or_url)
+    exists = (
+        db.query(UserRequestRow.id)
+        .filter(UserRequestRow.arxiv_id == base_id)
+        .first()
+        is not None
+    )
+    return {"exists": exists}
+
+
+async def does_user_request_exist(db: Session, auth_provider_id: str, arxiv_id_or_url: str) -> Dict[str, bool]:
+    """
+    Returns whether this user has requested the paper identified by this arXiv id or URL.
+    """
+    user = db.query(UserRow).filter(UserRow.id == auth_provider_id).first()
+    if not user:
+        raise ValueError("User not found")
+    base_id = arXiv_base_id(arxiv_id_or_url)
+    exists = (
+        db.query(UserRequestRow.id)
+        .filter(UserRequestRow.user_id == user.id, UserRequestRow.arxiv_id == base_id)
+        .first()
+        is not None
+    )
+    return {"exists": exists}
+
+
+async def count_any_user_requests(db: Session, arxiv_id_or_url: str) -> Dict[str, int]:
+    """
+    Returns how many distinct users have requested the paper (unique by user).
+    """
+    base_id = arXiv_base_id(arxiv_id_or_url)
+    count = (
+        db.query(UserRequestRow)
+        .filter(UserRequestRow.arxiv_id == base_id)
+        .count()
+    )
+    return {"count": int(count)}
+
+
 async def add_request_entry(db: Session, auth_provider_id: str, arxiv_id: str) -> Dict[str, bool]:
     """
     Add a user request for an arXiv id. Idempotent: returns created=False if already present.

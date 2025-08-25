@@ -4,10 +4,10 @@ from typing import Union, List, Optional, Dict, Any
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from api.types.paper_processing_api_models import Paper, JobStatusResponse, MinimalPaperItem
-from paperprocessor.client import process_paper_pdf
+from paperprocessor.client import process_paper_pdf, get_processed_result_path, build_paper_slug, get_processing_metrics_for_admin
 from shared.db import get_session
 from api.models import PaperRow, RequestedPaperRow, PaperSlugRow, NewPaperNotification
-from shared.arxiv.client import normalize_id, parse_url, fetch_metadata, head_pdf, download_pdf
+from shared.arxiv.client import normalize_id, parse_url, fetch_metadata, download_pdf
 from shared.arxiv.models import ArxivMetadata
 import os
 import uuid
@@ -284,8 +284,7 @@ def delete_paper(paper_uuid: UUID, db: Session = Depends(get_session), _admin: b
     if not row:
         raise HTTPException(status_code=404, detail="Paper not found")
     # Delete JSON file if exists
-    base_dir = os.path.abspath(os.path.join(os.getcwd(), 'data', 'paperjsons'))
-    json_path = os.path.join(base_dir, f"{paper_uuid}.json")
+    json_path = get_processed_result_path(str(paper_uuid))
     try:
         if os.path.exists(json_path):
             os.remove(json_path)
@@ -333,8 +332,7 @@ async def check_arxiv(arxiv_id_or_url: str, db: Session = Depends(get_session)):
     job = db.query(PaperRow).filter(PaperRow.arxiv_id == arxiv_id).first()
     if job and job.status == "completed":
         # Check for JSON file existence as a proxy for being fully processed and available.
-        base_dir = os.path.abspath(os.path.join(os.getcwd(), 'data', 'paperjsons'))
-        json_path = os.path.join(base_dir, f"{job.paper_uuid}.json")
+        json_path = get_processed_result_path(job.paper_uuid)
         if os.path.exists(json_path):
             # Resolve the latest, non-tombstoned slug for this paper.
             slug_row = (
@@ -418,7 +416,7 @@ async def request_arxiv(req: RequestArxivRequest, db: Session = Depends(get_sess
             )
             if not slug_row:
                 # Create slug; strict rules: require title and authors; on collision raise
-                slug_val = _build_slug_from_title_and_authors(job.title, job.authors)
+                slug_val = build_paper_slug(job.title, job.authors)
                 exists = db.query(PaperSlugRow).filter(PaperSlugRow.slug == slug_val).first()
                 if exists:
                     raise HTTPException(status_code=409, detail="Slug already exists")
@@ -747,7 +745,7 @@ def import_paper_json(paper: Dict[str, Any], db: Session = Depends(get_session),
 
     # Create slug on import; require title/authors; error on collision
     try:
-        slug = _build_slug_from_title_and_authors(title, authors)
+        slug = build_paper_slug(title, authors)
         exists = db.query(PaperSlugRow).filter(PaperSlugRow.slug == slug).first()
         if exists:
             raise HTTPException(status_code=409, detail="Slug already exists")
@@ -799,41 +797,19 @@ def import_paper_json(paper: Dict[str, Any], db: Session = Depends(get_session),
     )
 
 
+@router.get("/admin/papers/{paper_uuid}/processing_metrics")
+def get_admin_processing_metrics(paper_uuid: str, _admin: bool = Depends(require_admin)):
+    try:
+        return get_processing_metrics_for_admin(paper_uuid)
+    except FileNotFoundError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Paper not found")
+    except RuntimeError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+
+
 # --- Slug generation and resolution ---
 
-def _slugify_value(value: str) -> str:
-    # Lowercase, strip accents, keep alnum and hyphen
-    try:
-        import unicodedata
-        value = unicodedata.normalize('NFKD', value).encode('ascii', 'ignore').decode('ascii')
-    except Exception:
-        value = value
-    value = value.lower()
-    value = re.sub(r"[^a-z0-9]+", "-", value)
-    value = re.sub(r"-+", "-", value).strip('-')
-    return value[:120]
-
-
-def _build_slug_from_title_and_authors(title: Optional[str], authors: Optional[str]) -> str:
-    if not title or not authors:
-        raise HTTPException(status_code=400, detail="Cannot generate slug without title and authors")
-    # Limit title to the first 12 words
-    try:
-        title_tokens = [t for t in (title or '').split() if t]
-    except Exception:
-        title_tokens = []
-    limited_title = " ".join(title_tokens[:12]) if title_tokens else title
-    # Take up to two authors, using last names when possible
-    author_list = [a.strip() for a in authors.split(',') if a.strip()]
-    if len(author_list) == 0:
-        raise HTTPException(status_code=400, detail="Cannot generate slug: no authors present")
-    use_authors = author_list[:2]
-    def last_name(full: str) -> str:
-        parts = full.split()
-        return parts[-1] if parts else full
-    author_bits = [last_name(a) for a in use_authors]
-    base = f"{limited_title} {' '.join(author_bits)}"
-    return _slugify_value(base)
+## Removed private slug helpers; use build_paper_slug from paperprocessor.client
 
 
 class ResolveSlugResponse(BaseModel):
@@ -865,7 +841,7 @@ def create_slug(paper_uuid: UUID, db: Session = Depends(get_session)):
     if not job:
         logger.warning("Cannot create slug: paper not found paper_uuid=%s", paper_uuid)
         raise HTTPException(status_code=404, detail="Paper not found")
-    slug = _build_slug_from_title_and_authors(job.title, job.authors)
+    slug = build_paper_slug(job.title, job.authors)
     # Enforce uniqueness strictly; on collision, throw 409
     existing = db.query(PaperSlugRow).filter(PaperSlugRow.slug == slug).first()
     if existing:

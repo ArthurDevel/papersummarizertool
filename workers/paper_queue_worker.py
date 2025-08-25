@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from shared.db import SessionLocal
 from api.models import PaperRow, RequestedPaperRow, PaperSlugRow
 from shared.arxiv.client import fetch_pdf_for_processing
-from paperprocessor.client import process_paper_pdf
+from paperprocessor.client import process_paper_pdf, build_paper_slug, store_processed_result
 
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -39,21 +39,14 @@ async def _process_one(job: PaperRow) -> None:
         pdf = await fetch_pdf_for_processing(job.arxiv_url or job.arxiv_id)
         result = await process_paper_pdf(pdf.pdf_bytes, paper_id=job.paper_uuid, arxiv_id_or_url=(job.arxiv_url or job.arxiv_id))
 
-        # Persist JSON to data/paperjsons
-        base_dir = os.path.abspath(os.path.join(os.getcwd(), 'data', 'paperjsons'))
-        os.makedirs(base_dir, exist_ok=True)
-        target_path = os.path.join(base_dir, f"{job.paper_uuid}.json")
-        import json
-        with open(target_path, 'w', encoding='utf-8') as f:
-            json.dump(result, f, ensure_ascii=False)
+        # Persist processed result via processor helper
+        store_processed_result(job.paper_uuid, result)
 
-        # Derive metrics
-        pages = result.get('pages') or []
-        num_pages = len(pages)
+        # Read metrics directly from result (computed by processor)
+        num_pages = result.get('num_pages')
         processing_time = result.get('processing_time_seconds')
-        usage = (result.get('usage_summary') or {})
-        total_cost = usage.get('total_cost')
-        avg_cost_per_page = (total_cost / num_pages) if total_cost is not None and num_pages > 0 else None
+        total_cost = result.get('total_cost')
+        avg_cost_per_page = result.get('avg_cost_per_page')
 
         with session_scope() as s:
             j = s.get(PaperRow, job.id, with_for_update=True)
@@ -74,8 +67,7 @@ async def _process_one(job: PaperRow) -> None:
             s.add(j)
             # Create slug on completion; strict: require title and authors; throw on collision
             try:
-                from api.endpoints.paper_processing_endpoints import _build_slug_from_title_and_authors
-                slug = _build_slug_from_title_and_authors(j.title, j.authors)
+                slug = build_paper_slug(j.title, j.authors)
                 exists = s.query(PaperSlugRow).filter(PaperSlugRow.slug == slug).first()
                 if exists:
                     raise ValueError(f"Slug collision for '{slug}'")

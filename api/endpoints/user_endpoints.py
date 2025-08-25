@@ -3,6 +3,7 @@ from typing import List
 from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 from sqlalchemy.orm import Session
 from users import client as users_client
+from paperprocessor.client import get_processing_metrics_for_user, get_processing_metrics_for_admin
 from api.types.user_api_models import (
     SyncUserPayload,
     UserListItem,
@@ -37,6 +38,27 @@ def _require_auth_provider_id(x_auth_provider_id: str | None) -> str:
     if not x_auth_provider_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing X-Auth-Provider-Id header")
     return x_auth_provider_id
+
+
+@router.get("/users/me/papers/{paper_uuid}/processing_metrics")
+async def get_my_processing_metrics(
+    paper_uuid: str,
+    db: Session = Depends(get_session),
+    x_auth_provider_id: str | None = Header(default=None, convert_underscores=False, alias="X-Auth-Provider-Id"),
+):
+    user_id = _require_auth_provider_id(x_auth_provider_id)
+    try:
+        # DB dependency kept to be consistent with other endpoints; client method uses its own session
+        _ = db  # unused but kept for signature consistency
+        result = get_processing_metrics_for_user(paper_uuid, user_id)
+        return result
+    except FileNotFoundError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Paper not found")
+    except RuntimeError as e:
+        # Not completed yet
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+    except PermissionError:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
 
 
 @router.post("/users/me/list/{paper_uuid}", response_model=CreatedResponse)
