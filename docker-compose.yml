@@ -31,8 +31,7 @@ services:
       MYSQL_DATABASE: ${MYSQL_DATABASE}
       MYSQL_USER: ${MYSQL_USER}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
-    ports:
-      - "${HOSTPORT_MYSQL:-3306}:${CONTAINERPORT_MYSQL:-3306}"
+    # no host port mapping; MySQL is only accessible on the internal network
     volumes:
       - ./data/mysql:/var/lib/mysql
     healthcheck:

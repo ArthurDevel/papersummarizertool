@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     MYSQL_USER: str
     MYSQL_PASSWORD: str
     MYSQL_HOST: str
-    CONTAINERPORT_MYSQL: int = 3306
+    MYSQL_PORT: int = 3306
     MYSQL_DATABASE: str
 
 settings = Settings()

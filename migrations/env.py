@@ -67,7 +67,7 @@ def run_migrations_online() -> None:
         username=settings.MYSQL_USER,
         password=settings.MYSQL_PASSWORD,
         host=settings.MYSQL_HOST,
-        port=settings.CONTAINERPORT_MYSQL,
+        port=settings.MYSQL_PORT,
         database=settings.MYSQL_DATABASE,
     )
     

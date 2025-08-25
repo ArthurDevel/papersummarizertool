@@ -5,7 +5,7 @@ set -e
 
 # Wait for main MySQL to be ready
 echo "Waiting for MySQL..."
-while ! nc -z ${MYSQL_HOST} ${CONTAINERPORT_MYSQL}; do
+while ! nc -z ${MYSQL_HOST} ${MYSQL_PORT}; do
   sleep 1
 done
 echo "MySQL is up."

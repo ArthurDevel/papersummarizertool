@@ -13,7 +13,7 @@ Base = declarative_base()
 def _build_database_url() -> str:
     return (
         f"mysql+pymysql://{settings.MYSQL_USER}:{settings.MYSQL_PASSWORD}"
-        f"@{settings.MYSQL_HOST}:{settings.CONTAINERPORT_MYSQL}/{settings.MYSQL_DATABASE}"
+        f"@{settings.MYSQL_HOST}:{settings.MYSQL_PORT}/{settings.MYSQL_DATABASE}"
     )
 
 
