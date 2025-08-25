@@ -52,7 +52,7 @@ export const auth = betterAuth({
           }
 
           await resend.emails.send({
-            from: 'PaperSummarizer <login@resend.dev>', // TODO: Replace with your domain
+            from: 'PaperSummarizer <authentication@notifications.itempasshomelab.org>',
             to: [email],
             subject,
             html,
