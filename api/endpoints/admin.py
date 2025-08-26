@@ -16,10 +16,11 @@ from api.types.admin import (
     ImportResult,
 )
 from paperprocessor.client import get_processing_metrics_for_admin, build_paper_slug
-from papers.models import PaperRow, RequestedPaperRow, PaperSlugRow
+from papers.models import PaperRow, PaperSlugRow
 from shared.arxiv.client import normalize_id, fetch_metadata, download_pdf
 from shared.db import get_session
 from papers import client as papers_client
+from users import client as users_client
 
 import os
 import uuid
@@ -115,24 +116,8 @@ def admin_delete_paper(paper_uuid: uuid.UUID, db: Session = Depends(get_session)
 # --- Admin: Requested papers management ---
 @router.get("/admin/requested_papers", response_model=List[RequestedPaperItem])
 def admin_list_requested_papers(include_processed: bool = False, db: Session = Depends(get_session), _admin: bool = Depends(require_admin)):
-    q = db.query(RequestedPaperRow)
-    if not include_processed:
-        q = q.filter(RequestedPaperRow.processed == False)  # noqa: E712
-    rows = q.order_by(RequestedPaperRow.last_requested_at.desc()).all()
-    return [
-        RequestedPaperItem(
-            arxiv_id=r.arxiv_id,
-            arxiv_abs_url=r.arxiv_abs_url,
-            arxiv_pdf_url=r.arxiv_pdf_url,
-            request_count=int(r.request_count or 0),
-            first_requested_at=r.first_requested_at,
-            last_requested_at=r.last_requested_at,
-            title=r.title,
-            authors=r.authors,
-            num_pages=r.num_pages,
-        )
-        for r in rows
-    ]
+    items = users_client.list_aggregated_user_requests_for_admin(db, limit=500, offset=0)
+    return [RequestedPaperItem(**it) for it in items]
 
 
 @router.post("/admin/requested_papers/{arxiv_id_or_url}/start_processing", response_model=StartProcessingResponse)
@@ -145,21 +130,7 @@ async def admin_start_processing_requested(arxiv_id_or_url: str, db: Session = D
     base_id = norm.arxiv_id
     version = norm.version
 
-    # Ensure request row exists; if not, create one
-    req = db.query(RequestedPaperRow).filter(RequestedPaperRow.arxiv_id == base_id).first()
     now = datetime.utcnow()
-    if not req:
-        req = RequestedPaperRow(
-            arxiv_id=base_id,
-            arxiv_abs_url=f"https://arxiv.org/abs/{base_id}",
-            arxiv_pdf_url=f"https://arxiv.org/pdf/{base_id}.pdf",
-            request_count=1,
-            first_requested_at=now,
-            last_requested_at=now,
-            processed=False,
-        )
-        db.add(req)
-        db.flush()
 
     # Check if paper already exists in DB
     job = db.query(PaperRow).filter(PaperRow.arxiv_id == base_id).first()
@@ -191,11 +162,8 @@ async def admin_delete_requested_paper(arxiv_id_or_url: str, db: Session = Depen
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid arXiv id or URL")
     base_id = norm.arxiv_id
-    row = db.query(RequestedPaperRow).filter(RequestedPaperRow.arxiv_id == base_id).first()
-    if not row:
-        raise HTTPException(status_code=404, detail="Requested paper not found")
-    db.delete(row)
-    db.commit()
+    # Delete all per-user requests for this arXiv id
+    _ = users_client.delete_all_requests_for_arxiv(db, base_id)
     return DeleteRequestedResponse(deleted=base_id)
 
 

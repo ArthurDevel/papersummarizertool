@@ -1,6 +1,7 @@
 import logging
 from pydantic import EmailStr
 from typing import List, Dict, Any
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from papers.models import PaperRow, PaperSlugRow
@@ -260,6 +261,8 @@ async def list_user_requests(db: Session, auth_provider_id: str) -> List[Dict[st
             "arxiv_id": r.arxiv_id,
             "title": getattr(r, 'title', None),
             "authors": getattr(r, 'authors', None),
+            "is_processed": bool(getattr(r, 'is_processed', False)),
+            "processed_slug": getattr(r, 'processed_slug', None),
             "created_at": (r.created_at.isoformat() if getattr(r, "created_at", None) else None),
         })
     return items
@@ -276,3 +279,118 @@ def arXiv_base_id(id_or_url: str) -> str:
     # Strip version suffix like v2
     s = re.sub(r"v\d+$", "", s)
     return s
+
+
+def list_aggregated_user_requests_for_admin(db: Session, limit: int = 500, offset: int = 0) -> List[Dict[str, Any]]:
+    """
+    Aggregate user_requests by arxiv_id with counts and timestamps.
+    Returns dicts with fields suitable for admin:
+    - arxiv_id, title, authors
+    - request_count, first_requested_at, last_requested_at
+    - arxiv_abs_url, arxiv_pdf_url
+    - num_pages (from papers if exists), processed_slug (latest non-tombstoned)
+    """
+    from papers.models import PaperRow, PaperSlugRow
+
+    sub = (
+        db.query(
+            UserRequestRow.arxiv_id.label('arxiv_id'),
+            func.count(func.distinct(UserRequestRow.user_id)).label('request_count'),
+            func.min(UserRequestRow.created_at).label('first_requested_at'),
+            func.max(UserRequestRow.created_at).label('last_requested_at'),
+            func.max(UserRequestRow.title).label('title'),
+            func.max(UserRequestRow.authors).label('authors'),
+            func.max(UserRequestRow.is_processed).label('any_processed'),
+        )
+        .group_by(UserRequestRow.arxiv_id)
+        .subquery()
+    )
+
+    # Join to papers and slugs (latest non-tombstoned)
+    rows = (
+        db.query(
+            sub.c.arxiv_id,
+            sub.c.request_count,
+            sub.c.first_requested_at,
+            sub.c.last_requested_at,
+            sub.c.title,
+            sub.c.authors,
+            PaperRow.num_pages,
+            PaperRow.paper_uuid,
+        )
+        .outerjoin(PaperRow, func.binary(PaperRow.arxiv_id) == func.binary(sub.c.arxiv_id))
+        .filter((sub.c.any_processed == 0) | (sub.c.any_processed.is_(None)))
+        .order_by(sub.c.last_requested_at.desc())
+        .limit(max(1, min(limit, 1000)))
+        .offset(max(0, offset))
+        .all()
+    )
+
+    # Load slugs for the paper_uuids present
+    by_uuid: Dict[str, str] = {}
+    uuids = [r.paper_uuid for r in rows if getattr(r, 'paper_uuid', None)]
+    if uuids:
+        slug_rows = (
+            db.query(PaperSlugRow)
+            .filter(PaperSlugRow.paper_uuid.in_(uuids))
+            .filter(PaperSlugRow.tombstone == False)  # noqa: E712
+            .all()
+        )
+        for s in slug_rows:
+            if s.paper_uuid and s.paper_uuid not in by_uuid:
+                by_uuid[s.paper_uuid] = s.slug
+
+    items: List[Dict[str, Any]] = []
+    for r in rows:
+        arxiv_id: str = r.arxiv_id
+        abs_url = f"https://arxiv.org/abs/{arxiv_id}"
+        pdf_url = f"https://arxiv.org/pdf/{arxiv_id}.pdf"
+        processed_slug = by_uuid.get(getattr(r, 'paper_uuid', None))
+        items.append({
+            'arxiv_id': arxiv_id,
+            'arxiv_abs_url': abs_url,
+            'arxiv_pdf_url': pdf_url,
+            'request_count': int(getattr(r, 'request_count') or 0),
+            'first_requested_at': getattr(r, 'first_requested_at'),
+            'last_requested_at': getattr(r, 'last_requested_at'),
+            'title': getattr(r, 'title', None),
+            'authors': getattr(r, 'authors', None),
+            'num_pages': getattr(r, 'num_pages', None),
+            'processed_slug': processed_slug,
+        })
+    return items
+
+
+def delete_all_requests_for_arxiv(db: Session, arxiv_id_or_url: str) -> Dict[str, int]:
+    """
+    Delete all per-user user_requests rows for the given arXiv id/URL (normalized).
+    Returns {"deleted": N}.
+    """
+    base_id = arXiv_base_id(arxiv_id_or_url)
+    q = db.query(UserRequestRow).filter(UserRequestRow.arxiv_id == base_id)
+    deleted = q.delete(synchronize_session=False)
+    db.commit()
+    return {"deleted": int(deleted or 0)}
+
+
+async def set_requests_processed(db: Session, arxiv_id: str, processed_slug: str) -> Dict[str, int]:
+    """
+    Mark all user requests for this base arXiv id as processed and set processed_slug.
+    Requires a non-empty slug; will raise if slug is falsy per product decision.
+    Returns {"updated": N}.
+    """
+    if not processed_slug or not isinstance(processed_slug, str):
+        raise ValueError("processed_slug is required")
+    base_id = arXiv_base_id(arxiv_id)
+    q = db.query(UserRequestRow).filter(UserRequestRow.arxiv_id == base_id)
+    updated = 0
+    for r in q.all():
+        try:
+            r.is_processed = True
+            r.processed_slug = processed_slug
+            db.add(r)
+            updated += 1
+        except Exception:
+            logger.exception("Failed to mark user request processed user_id=%s arxiv_id=%s", getattr(r, 'user_id', None), base_id)
+    db.commit()
+    return {"updated": updated}

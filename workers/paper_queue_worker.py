@@ -11,9 +11,10 @@ from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from shared.db import SessionLocal
-from papers.models import PaperRow, RequestedPaperRow, PaperSlugRow
+from papers.models import PaperRow, PaperSlugRow
 from shared.arxiv.client import fetch_pdf_for_processing
 from paperprocessor.client import process_paper_pdf, build_paper_slug, store_processed_result
+from users.client import set_requests_processed
 
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -74,14 +75,11 @@ async def _process_one(job: PaperRow) -> None:
                 s.add(PaperSlugRow(slug=slug, paper_uuid=j.paper_uuid, tombstone=False, created_at=datetime.utcnow()))
             except Exception:
                 logger.exception("Failed to create slug for paper_uuid=%s", j.paper_uuid)
-            # Mark corresponding request as processed (soft-delete)
-            try:
-                req = s.query(RequestedPaperRow).filter(RequestedPaperRow.arxiv_id == (j.arxiv_id)).first()
-                if req and not getattr(req, 'processed', False):
-                    req.processed = True
-                    s.add(req)
-            except Exception:
-                logger.exception("Failed to mark requested paper as processed for arxiv_id=%s", j.arxiv_id)
+                raise
+            # After slug is added in the same transaction, mark user requests processed.
+            # This requires slug; if it fails, let it bubble up (no backfill).
+            s.flush()
+            await set_requests_processed(s, j.arxiv_id, slug)
     except Exception as e:
         logger.exception("Job %s failed", job.id)
         with session_scope() as s:

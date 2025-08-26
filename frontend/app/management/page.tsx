@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from 'react';
-import { listPapers, listRequestedPapers, deleteRequestedPaper, type JobDbStatus, type RequestedPaper } from '../../services/api';
+import { listPapers, listRequestedPapers, deleteRequestedPaper, enqueueArxiv, type JobDbStatus, type RequestedPaper } from '../../services/api';
 import Link from 'next/link';
 
 type ListItem = {
@@ -130,15 +130,8 @@ export default function ManagementPage() {
     try {
       setIsLoading(true);
       setError(null);
-      const res = await fetch('/api/papers/enqueue_arxiv', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ url }),
-      });
-      const payload = await res.json();
-      if (!res.ok) throw new Error(payload?.detail || 'Failed to enqueue');
+      const payload = await enqueueArxiv(url);
       alert(`Enqueued. Paper UUID: ${payload.paper_uuid}. It will appear once processed.`);
-      // Refresh DB list
       const dbList = await listPapers();
       setDbPapers(dbList);
     } catch (e) {

@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import type { MinimalPaperItem } from '../../types/paper';
 import { listMinimalPapers } from '../../services/api';
 
@@ -9,6 +10,10 @@ export default function AllPapersPage() {
   const [items, setItems] = useState<MinimalPaperItem[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [value, setValue] = useState('');
+  const [formError, setFormError] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -34,12 +39,12 @@ export default function AllPapersPage() {
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
         <div className="mb-4 flex items-center justify-between">
           <h1 className="text-3xl font-bold">All Papers</h1>
-          <Link
-            href="/requestpaper"
+          <button
+            onClick={() => { setValue(''); setFormError(null); setOpen(true); }}
             className="px-4 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700"
           >
             Request a paper
-          </Link>
+          </button>
         </div>
         <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">Listing contents of <span className="font-mono">data/paperjsons/</span>.</p>
 
@@ -77,6 +82,70 @@ export default function AllPapersPage() {
                 </div>
               </Link>
             ))}
+          </div>
+        )}
+
+        {open && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+            <div className="w-full max-w-md rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 p-4 shadow-xl">
+              <h2 className="text-lg font-semibold mb-2">Enter arXiv URL or ID</h2>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const v = (value || '').trim();
+                  if (!v) {
+                    setFormError('Please enter an arXiv URL or identifier');
+                    return;
+                  }
+                  setFormError(null);
+                  setOpen(false);
+                  // Extract base arXiv id: support full abs/pdf URLs, arXiv: prefix, version suffix, and .pdf
+                  let id = v;
+                  try {
+                    // If URL, take last path segment after /abs/ or /pdf/
+                    const m = id.match(/https?:\/\/[^/]+\/(abs|pdf)\/([^?#]+)/i);
+                    if (m) {
+                      id = m[2];
+                    }
+                    // Drop .pdf suffix if present
+                    id = id.replace(/\.pdf$/i, '');
+                    // Drop arXiv: prefix
+                    id = id.replace(/^arxiv:/i, '');
+                    // Drop version suffix like v2
+                    id = id.replace(/v\d+$/i, '');
+                    id = id.trim();
+                  } catch {}
+                  router.push(`/checkpaper/${id}`);
+                }}
+                className="space-y-3"
+              >
+                <input
+                  autoFocus
+                  value={value}
+                  onChange={(e) => setValue(e.target.value)}
+                  placeholder="e.g., https://arxiv.org/abs/2507.12345 or 2507.12345"
+                  className="w-full px-3 py-2 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                {formError && (
+                  <div className="text-xs text-red-600 dark:text-red-400">{formError}</div>
+                )}
+                <div className="flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setOpen(false)}
+                    className="px-3 py-1.5 text-sm rounded-md border bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-3 py-1.5 text-sm rounded-md bg-blue-600 text-white hover:bg-blue-700"
+                  >
+                    Continue
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         )}
       </div>

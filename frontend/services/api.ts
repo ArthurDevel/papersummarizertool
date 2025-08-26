@@ -143,6 +143,10 @@ export type CheckArxivResponse = {
 };
 
 export const checkArxiv = async (arxivIdOrUrl: string): Promise<CheckArxivResponse> => {
+    // Reject pre-encoded inputs to avoid double-encoding issues
+    if (/%[0-9A-Fa-f]{2}/.test(arxivIdOrUrl)) {
+        throw new Error('checkArxiv received an already-encoded value; pass a raw arXiv id or URL');
+    }
     const encoded = encodeURIComponent(arxivIdOrUrl);
     const response = await fetch(`${API_URL}/papers/check_arxiv/${encoded}`);
     if (!response.ok) {
@@ -153,31 +157,6 @@ export const checkArxiv = async (arxivIdOrUrl: string): Promise<CheckArxivRespon
 };
 
 // --- Public: request paper for processing ---
-export type RequestArxivResponse = {
-    state: 'exists' | 'requested';
-    viewer_url?: string | null;
-};
-
-export const requestArxivPaper = async (url: string): Promise<RequestArxivResponse> => {
-    const response = await fetch(`${API_URL}/papers/request_arxiv`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ url }),
-    });
-    const responseText = await response.text();
-    if (!response.ok) {
-        try {
-            const errorPayload = JSON.parse(responseText);
-            if (errorPayload.detail) {
-                throw new Error(errorPayload.detail);
-            }
-        } catch (e) {
-            // Not a JSON response, fall through to throw generic error
-        }
-        throw new Error(`HTTP error! status: ${response.status}, message: ${responseText}`);
-    }
-    return JSON.parse(responseText);
-};
 
 export type ArxivAuthor = {
     name: string;
@@ -253,15 +232,3 @@ export const searchPapers = async (payload: SearchQueryRequest): Promise<SearchQ
     return response.json();
 }
 
-export type SimilarPapersResponse = {
-    items: SearchItem[];
-};
-
-export const getSimilarPapers = async (paperUuid: string, limit: number = 20): Promise<SimilarPapersResponse> => {
-    const response = await fetch(`${API_URL}/search/paper/${encodeURIComponent(paperUuid)}/similar?limit=${encodeURIComponent(String(limit))}`);
-    if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
-    }
-    return response.json();
-}

@@ -7,7 +7,7 @@ from api.types.paper_processing_api_models import Paper, JobStatusResponse, Mini
 from api.types.paper_processing_endpoints import JobDbStatus
 from paperprocessor.client import process_paper_pdf, get_processed_result_path, build_paper_slug
 from shared.db import get_session
-from papers.models import PaperRow, RequestedPaperRow, PaperSlugRow
+from papers.models import PaperRow, PaperSlugRow
 from papers import client as papers_client
 from shared.arxiv.client import normalize_id, parse_url, fetch_metadata, download_pdf
 from shared.arxiv.models import ArxivMetadata
@@ -145,42 +145,6 @@ def list_minimal_papers(db: Session = Depends(get_session)):
 
 
 
-@router.get("/papers/{paper_uuid}", response_model=JobDbStatus)
-def get_paper_by_uuid(paper_uuid: UUID, db: Session = Depends(get_session)):
-    logger.info("GET /papers/%s", paper_uuid)
-    job = papers_client.get_paper_by_uuid(db, str(paper_uuid))
-    if not job:
-        logger.warning("Paper not found for paper_uuid=%s", paper_uuid)
-        raise HTTPException(status_code=404, detail="Job not found")
-    logger.info("Found paper paper_uuid=%s status=%s arxiv_id=%s", job.paper_uuid, job.status, job.arxiv_id)
-    return JobDbStatus(
-        paper_uuid=job.paper_uuid,
-        status=job.status,
-        error_message=job.error_message,
-        created_at=job.created_at,
-        updated_at=job.updated_at,
-        started_at=job.started_at,
-        finished_at=job.finished_at,
-        arxiv_id=job.arxiv_id,
-        arxiv_version=job.arxiv_version,
-        arxiv_url=job.arxiv_url,
-        title=job.title,
-        authors=job.authors,
-        num_pages=job.num_pages,
-        thumbnail_data_url=getattr(job, 'thumbnail_data_url', None),
-        processing_time_seconds=job.processing_time_seconds,
-        total_cost=job.total_cost,
-        avg_cost_per_page=job.avg_cost_per_page,
-    )
-
-
-## Moved admin list endpoint to api/endpoints/admin.py
-
-
-## Moved admin restart endpoint to api/endpoints/admin.py
-
-
-## Moved admin delete endpoint to api/endpoints/admin.py
 
 
 # --- Paper existence check ---
@@ -243,127 +207,9 @@ async def get_arxiv_metadata(arxiv_id_or_url: str):
         raise HTTPException(status_code=500, detail="Failed to fetch metadata from arXiv API")
 
 
-# --- Request Paper (strict arXiv URL) ---
-
-class RequestArxivRequest(BaseModel):
-    url: str
-
-
-class RequestArxivResponse(BaseModel):
-    state: str  # "exists" | "requested"
-    viewer_url: Optional[str] = None
-
-
-@router.post("/papers/request_arxiv", response_model=RequestArxivResponse)
-async def request_arxiv(req: RequestArxivRequest, db: Session = Depends(get_session)):
-    # Strict URLs only
-    raw = (req.url or "").strip()
-    if not (raw.startswith("http://") or raw.startswith("https://")):
-        raise HTTPException(status_code=400, detail="Only arXiv abs/pdf URLs are accepted")
-    try:
-        parsed = await parse_url(raw)
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid arXiv URL")
-    if parsed.url_type not in ("abs", "pdf"):
-        raise HTTPException(status_code=400, detail="Only arXiv abs/pdf URLs are accepted")
-
-    # Treat versions as the same paper
-    arxiv_id = parsed.arxiv_id
-    abs_url = f"https://arxiv.org/abs/{arxiv_id}"
-    pdf_url = f"https://arxiv.org/pdf/{arxiv_id}.pdf"
-
-    # If the paper exists and is completed with JSON available, return pretty URL (/paper/<slug>) and DO NOT add to requests
-    job = db.query(PaperRow).filter(PaperRow.arxiv_id == arxiv_id).first()
-    if job and job.status == "completed":
-        base_dir = os.path.abspath(os.path.join(os.getcwd(), 'data', 'paperjsons'))
-        json_path = os.path.join(base_dir, f"{job.paper_uuid}.json")
-        if os.path.exists(json_path):
-            # Resolve or create slug for this paper
-            slug_row = (
-                db.query(PaperSlugRow)
-                .filter(PaperSlugRow.paper_uuid == job.paper_uuid)
-                .filter(PaperSlugRow.tombstone == False)  # noqa: E712
-                .order_by(PaperSlugRow.created_at.desc())
-                .first()
-            )
-            if not slug_row:
-                # Create slug; strict rules: require title and authors; on collision raise
-                slug_val = build_paper_slug(job.title, job.authors)
-                exists = db.query(PaperSlugRow).filter(PaperSlugRow.slug == slug_val).first()
-                if exists:
-                    raise HTTPException(status_code=409, detail="Slug already exists")
-                slug_row = PaperSlugRow(slug=slug_val, paper_uuid=job.paper_uuid, tombstone=False, created_at=datetime.utcnow())
-                db.add(slug_row)
-                db.commit()
-                db.refresh(slug_row)
-            return RequestArxivResponse(state="exists", viewer_url=f"/paper/{slug_row.slug}")
-
-
-    # Otherwise, upsert into requested_papers (increment count, update timestamps)
-    now = datetime.utcnow()
-    existing_req = db.query(RequestedPaperRow).filter(RequestedPaperRow.arxiv_id == arxiv_id).first()
-    # Fetch metadata: title/authors; head PDF for page count estimate if possible
-    title_val = None
-    authors_str = None
-    num_pages_val = None
-    try:
-        meta = await fetch_metadata(arxiv_id)
-        title_val = meta.title or None
-        authors_str = ", ".join([a.name for a in (meta.authors or [])]) or None
-    except Exception:
-        logger.exception("Failed to fetch arXiv metadata for %s", arxiv_id)
-    try:
-        # Download PDF and count pages using PyMuPDF
-        pdf = await download_pdf(arxiv_id)
-        try:
-            import fitz  # PyMuPDF
-            with fitz.open(stream=pdf.pdf_bytes, filetype="pdf") as doc:
-                num_pages_val = doc.page_count
-        except Exception:
-            logger.exception("Failed to count pages for %s via PyMuPDF", arxiv_id)
-            num_pages_val = None
-    except Exception:
-        logger.exception("Failed to download PDF to count pages for %s", arxiv_id)
-
-    if existing_req:
-        existing_req.request_count = int(existing_req.request_count or 0) + 1
-        existing_req.last_requested_at = now
-        if title_val:
-            existing_req.title = title_val
-        if authors_str:
-            existing_req.authors = authors_str
-        if num_pages_val is not None:
-            existing_req.num_pages = num_pages_val
-        db.add(existing_req)
-    else:
-        new_req = RequestedPaperRow(
-            arxiv_id=arxiv_id,
-            arxiv_abs_url=abs_url,
-            arxiv_pdf_url=pdf_url,
-            request_count=1,
-            first_requested_at=now,
-            last_requested_at=now,
-            title=title_val,
-            authors=authors_str,
-            num_pages=num_pages_val,
-        )
-        db.add(new_req)
-    db.commit()
-
-    # Otherwise, just acknowledge the request without exposing queue state
-    return RequestArxivResponse(state="requested")
-
-
-
-# Notifications feature removed
-
-
-
 
 
 # --- Slug generation and resolution ---
-
-## Removed private slug helpers; use build_paper_slug from paperprocessor.client
 
 
 class ResolveSlugResponse(BaseModel):

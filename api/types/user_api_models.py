@@ -31,4 +31,6 @@ class UserRequestItem(BaseModel):
     arxiv_id: str
     title: str | None = None
     authors: str | None = None
+    is_processed: bool = False
+    processed_slug: str | None = None
     created_at: str | None = None

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, Index, String, UniqueConstraint
+from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, Index, String, UniqueConstraint, Boolean
 
 from shared.db import Base
 
@@ -41,9 +41,13 @@ class UserRequestRow(Base):
     title = Column(String(512), nullable=True)
     authors = Column(String(2048), nullable=True)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    # Mark true when a paper for this arXiv id is fully processed and a slug exists
+    is_processed = Column(Boolean, nullable=False, default=False)
+    processed_slug = Column(String(255), nullable=True)
 
     __table_args__ = (
         UniqueConstraint("user_id", "arxiv_id", name="uq_user_requests_user_arxiv"),
         Index("ix_user_requests_user_id", "user_id"),
         Index("ix_user_requests_arxiv_id", "arxiv_id"),
+        Index("ix_user_requests_is_processed", "is_processed"),
     )

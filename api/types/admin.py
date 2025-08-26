@@ -16,6 +16,7 @@ class RequestedPaperItem(BaseModel):
     title: Optional[str] = None
     authors: Optional[str] = None
     num_pages: Optional[int] = None
+    processed_slug: Optional[str] = None
 
 
 class StartProcessingResponse(BaseModel):

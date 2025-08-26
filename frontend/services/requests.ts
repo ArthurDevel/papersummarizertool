@@ -4,6 +4,8 @@ export type UserRequestItem = {
   arxiv_id: string;
   title?: string | null;
   authors?: string | null;
+  is_processed?: boolean;
+  processed_slug?: string | null;
   created_at?: string | null;
 };
 

@@ -41,23 +41,6 @@ class PaperRow(Base):
     )
 
 
-class RequestedPaperRow(Base):
-    __tablename__ = "requested_papers"
-
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
-    arxiv_id = Column(String(64), nullable=False, unique=True)
-    # We intentionally treat versions as the same paper; store canonical base URLs
-    arxiv_abs_url = Column(String(255), nullable=False)
-    arxiv_pdf_url = Column(String(255), nullable=False)
-    request_count = Column(Integer, nullable=False, default=1)
-    first_requested_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    last_requested_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    processed = Column(Boolean, nullable=False, default=False)
-    title = Column(String(512), nullable=True)
-    authors = Column(Text, nullable=True)
-    num_pages = Column(Integer, nullable=True)
-
-
 class PaperSlugRow(Base):
     __tablename__ = "paper_slugs"
 

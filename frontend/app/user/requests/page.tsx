@@ -91,7 +91,12 @@ export default function UserRequestsPage() {
                       </td>
                       <td className="p-2 align-top">
                         {it.title ? (
-                          <div className="font-medium">{it.title}</div>
+                          <div className="font-medium flex items-center gap-2">
+                            <span>{it.title}</span>
+                            {it.is_processed && it.processed_slug ? (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300">Processed</span>
+                            ) : null}
+                          </div>
                         ) : (
                           <div className="text-gray-500 dark:text-gray-400 italic">No title</div>
                         )}
@@ -102,7 +107,16 @@ export default function UserRequestsPage() {
                       <td className="p-2 align-top whitespace-nowrap text-xs text-gray-700 dark:text-gray-300">{addedStr}</td>
                       <td className="p-2 align-top">
                         <div className="flex gap-2">
-                          <a href={absHref} target="_blank" rel="noopener noreferrer" className="text-xs px-2 py-1 rounded border bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">View on arXiv</a>
+                          {it.is_processed && it.processed_slug ? (
+                            <a
+                              href={`/paper/${encodeURIComponent(it.processed_slug)}`}
+                              className="text-xs px-2 py-1 rounded border bg-green-600 text-white hover:bg-green-700 dark:border-green-700"
+                            >
+                              View on PaperProcessor
+                            </a>
+                          ) : (
+                            <a href={absHref} target="_blank" rel="noopener noreferrer" className="text-xs px-2 py-1 rounded border bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">View on arXiv</a>
+                          )}
                           <button
                             onClick={() => handleRemove(it.arxiv_id)}
                             disabled={removing === it.arxiv_id}
