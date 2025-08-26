@@ -76,7 +76,7 @@ export type JobDbStatus = {
 }
 
 export const listPapers = async (status?: string): Promise<JobDbStatus[]> => {
-    const url = new URL(`${API_URL}/papers`, window.location.origin);
+    const url = new URL(`${API_URL}/admin/papers`, window.location.origin);
     if (status) url.searchParams.set('status', status);
     const response = await fetch(url.toString());
     if (!response.ok) {
@@ -99,7 +99,7 @@ export type RequestedPaper = {
 }
 
 export const listRequestedPapers = async (): Promise<RequestedPaper[]> => {
-    const response = await fetch(`${API_URL}/requested_papers`);
+    const response = await fetch(`${API_URL}/admin/requested_papers`);
     if (!response.ok) {
         const errorText = await response.text();
         throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
@@ -109,7 +109,7 @@ export const listRequestedPapers = async (): Promise<RequestedPaper[]> => {
 
 export const startProcessingRequested = async (arxivIdOrUrl: string): Promise<{ paper_uuid: string; status: string; }> => {
     const encoded = encodeURIComponent(arxivIdOrUrl);
-    const response = await fetch(`${API_URL}/requested_papers/${encoded}/start_processing`, { method: 'POST' });
+    const response = await fetch(`${API_URL}/admin/requested_papers/${encoded}/start_processing`, { method: 'POST' });
     if (!response.ok) {
         const errorText = await response.text();
         throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
@@ -119,7 +119,7 @@ export const startProcessingRequested = async (arxivIdOrUrl: string): Promise<{ 
 
 export const deleteRequestedPaper = async (arxivIdOrUrl: string): Promise<{ deleted: string }> => {
     const encoded = encodeURIComponent(arxivIdOrUrl);
-    const response = await fetch(`${API_URL}/requested_papers/${encoded}`, { method: 'DELETE' });
+    const response = await fetch(`${API_URL}/admin/requested_papers/${encoded}`, { method: 'DELETE' });
     if (!response.ok) {
         const errorText = await response.text();
         throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);

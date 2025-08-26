@@ -81,7 +81,7 @@ export default function ManagementPage() {
         // Validate JSON locally first
         const parsed = JSON.parse(text);
         // Import into backend (writes DB row and data/paperjsons file)
-        const res = await fetch('/api/papers/import_json', {
+        const res = await fetch('/api/admin/papers/import_json', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify(parsed),
@@ -231,7 +231,7 @@ export default function ManagementPage() {
                                 setIsLoading(true);
                                 setError(null);
                                 // Start processing via API
-                                await fetch(`/api/requested_papers/${encodeURIComponent(r.arxiv_id)}/start_processing`, { method: 'POST' });
+                                await fetch(`/api/admin/requested_papers/${encodeURIComponent(r.arxiv_id)}/start_processing`, { method: 'POST' });
                                 // Refresh lists
                                 const [dbList, reqList] = await Promise.all([
                                   listPapers(),
@@ -382,7 +382,7 @@ export default function ManagementPage() {
                                 try {
                                   setIsLoading(true);
                                   setError(null);
-                                  const res = await fetch(`/api/papers/${encodeURIComponent(r.paper_uuid)}/restart`, { method: 'POST' });
+                                  const res = await fetch(`/api/admin/papers/${encodeURIComponent(r.paper_uuid)}/restart`, { method: 'POST' });
                                   if (!res.ok) {
                                     const payload = await res.json().catch(() => ({}));
                                     throw new Error(payload?.detail || `Restart failed (${res.status})`);
@@ -406,7 +406,7 @@ export default function ManagementPage() {
                                   if (!confirm('Delete this paper? This will also delete the JSON file.')) return;
                                   setIsLoading(true);
                                   setError(null);
-                                  const res = await fetch(`/api/papers/${encodeURIComponent(r.paper_uuid)}`, { method: 'DELETE' });
+                                  const res = await fetch(`/api/admin/papers/${encodeURIComponent(r.paper_uuid)}`, { method: 'DELETE' });
                                   if (!res.ok) {
                                     const payload = await res.json().catch(() => ({}));
                                     throw new Error(payload?.detail || `Delete failed (${res.status})`);

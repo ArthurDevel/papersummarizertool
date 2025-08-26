@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from api.types.paper_processing_api_models import Paper, JobStatusResponse, MinimalPaperItem
 from api.types.paper_processing_endpoints import JobDbStatus
-from paperprocessor.client import process_paper_pdf, get_processed_result_path, build_paper_slug, get_processing_metrics_for_admin
+from paperprocessor.client import process_paper_pdf, get_processed_result_path, build_paper_slug
 from shared.db import get_session
 from papers.models import PaperRow, RequestedPaperRow, PaperSlugRow, NewPaperNotification
 from papers import client as papers_client
@@ -17,7 +17,6 @@ from datetime import datetime
 from uuid import UUID
 from api.background_jobs import create_job, get_job_status, update_job_status
 import logging
-import re
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -175,62 +174,13 @@ def get_paper_by_uuid(paper_uuid: UUID, db: Session = Depends(get_session)):
     )
 
 
-@router.get("/papers", response_model=List[JobDbStatus])
-def list_papers(status: Optional[str] = None, limit: int = 500, db: Session = Depends(get_session), _admin: bool = Depends(require_admin)):
-    statuses = [s.strip() for s in status.split(",") if s.strip()] if status else None
-    rows = papers_client.list_papers(db, statuses, limit)
-    return [
-        JobDbStatus(
-            paper_uuid=r.paper_uuid,
-            status=r.status,
-            error_message=r.error_message,
-            created_at=r.created_at,
-            updated_at=r.updated_at,
-            started_at=r.started_at,
-            finished_at=r.finished_at,
-            arxiv_id=r.arxiv_id,
-            arxiv_version=r.arxiv_version,
-            arxiv_url=r.arxiv_url,
-            title=r.title,
-            authors=r.authors,
-            num_pages=r.num_pages,
-            thumbnail_data_url=getattr(r, 'thumbnail_data_url', None),
-            processing_time_seconds=r.processing_time_seconds,
-            total_cost=r.total_cost,
-            avg_cost_per_page=r.avg_cost_per_page,
-        )
-        for r in rows
-    ]
+## Moved admin list endpoint to api/endpoints/admin.py
 
 
-class RestartPaperRequest(BaseModel):
-    reason: Optional[str] = None
+## Moved admin restart endpoint to api/endpoints/admin.py
 
 
-@router.post("/papers/{paper_uuid}/restart", status_code=200)
-def restart_paper(paper_uuid: UUID, _body: RestartPaperRequest | None = None, db: Session = Depends(get_session), _admin: bool = Depends(require_admin)):
-    row = db.query(PaperRow).filter(PaperRow.paper_uuid == str(paper_uuid)).first()
-    if not row:
-        raise HTTPException(status_code=404, detail="Paper not found")
-    if row.status == "processing":
-        raise HTTPException(status_code=409, detail="Paper is already processing")
-    # Reset for reprocessing
-    row.status = "not_started"
-    row.error_message = None
-    row.started_at = None
-    row.finished_at = None
-    row.updated_at = datetime.utcnow()
-    db.add(row)
-    db.commit()
-    return {"paper_uuid": paper_uuid, "status": row.status}
-
-
-@router.delete("/papers/{paper_uuid}", status_code=200)
-def delete_paper(paper_uuid: UUID, db: Session = Depends(get_session), _admin: bool = Depends(require_admin)):
-    ok = papers_client.delete_paper(db, str(paper_uuid))
-    if not ok:
-        raise HTTPException(status_code=404, detail="Paper not found")
-    return {"deleted": paper_uuid}
+## Moved admin delete endpoint to api/endpoints/admin.py
 
 
 # --- Paper existence check ---
@@ -423,112 +373,6 @@ async def request_arxiv(req: RequestArxivRequest, db: Session = Depends(get_sess
     return RequestArxivResponse(state="requested")
 
 
-class RequestedPaperItem(BaseModel):
-    arxiv_id: str
-    arxiv_abs_url: str
-    arxiv_pdf_url: str
-    request_count: int
-    first_requested_at: datetime
-    last_requested_at: datetime
-    title: Optional[str] = None
-    authors: Optional[str] = None
-    num_pages: Optional[int] = None
-
-
-@router.get("/requested_papers", response_model=List[RequestedPaperItem])
-def list_requested_papers(include_processed: bool = False, db: Session = Depends(get_session), _admin: bool = Depends(require_admin)):
-    q = db.query(RequestedPaperRow)
-    if not include_processed:
-        q = q.filter(RequestedPaperRow.processed == False)  # noqa: E712
-    rows = q.order_by(RequestedPaperRow.last_requested_at.desc()).all()
-    return [
-        RequestedPaperItem(
-            arxiv_id=r.arxiv_id,
-            arxiv_abs_url=r.arxiv_abs_url,
-            arxiv_pdf_url=r.arxiv_pdf_url,
-            request_count=int(r.request_count or 0),
-            first_requested_at=r.first_requested_at,
-            last_requested_at=r.last_requested_at,
-            title=r.title,
-            authors=r.authors,
-            num_pages=r.num_pages,
-        )
-        for r in rows
-    ]
-
-
-class StartProcessingResponse(BaseModel):
-    paper_uuid: str
-    status: str
-
-
-@router.post("/requested_papers/{arxiv_id_or_url}/start_processing", response_model=StartProcessingResponse)
-async def start_processing_requested(arxiv_id_or_url: str, db: Session = Depends(get_session), _admin: bool = Depends(require_admin)):
-    # Normalize to base id
-    try:
-        norm = await normalize_id(arxiv_id_or_url)
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid arXiv id or URL")
-    base_id = norm.arxiv_id
-    version = norm.version
-
-    # Ensure request row exists; if not, create one
-    req = db.query(RequestedPaperRow).filter(RequestedPaperRow.arxiv_id == base_id).first()
-    now = datetime.utcnow()
-    if not req:
-        req = RequestedPaperRow(
-            arxiv_id=base_id,
-            arxiv_abs_url=f"https://arxiv.org/abs/{base_id}",
-            arxiv_pdf_url=f"https://arxiv.org/pdf/{base_id}.pdf",
-            request_count=1,
-            first_requested_at=now,
-            last_requested_at=now,
-            processed=False,
-        )
-        db.add(req)
-        db.flush()
-
-    # Check if paper already exists in DB
-    job = db.query(PaperRow).filter(PaperRow.arxiv_id == base_id).first()
-    if job:
-        # Do not modify existing job; return its identity
-        return StartProcessingResponse(paper_uuid=job.paper_uuid, status=job.status)
-
-    # Create new papers row with status 'not_started'
-    paper_uuid = str(uuid.uuid4())
-    new_job = PaperRow(
-        paper_uuid=paper_uuid,
-        arxiv_id=base_id,
-        arxiv_version=version,
-        arxiv_url=f"https://arxiv.org/abs/{base_id}{version or ''}",
-        status="not_started",
-        created_at=now,
-        updated_at=now,
-    )
-    db.add(new_job)
-    db.commit()
-    db.refresh(new_job)
-    return StartProcessingResponse(paper_uuid=new_job.paper_uuid, status=new_job.status)
-
-
-class DeleteRequestedResponse(BaseModel):
-    deleted: str
-
-
-@router.delete("/requested_papers/{arxiv_id_or_url}", response_model=DeleteRequestedResponse)
-async def delete_requested_paper(arxiv_id_or_url: str, db: Session = Depends(get_session), _admin: bool = Depends(require_admin)):
-    try:
-        norm = await normalize_id(arxiv_id_or_url)
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid arXiv id or URL")
-    base_id = norm.arxiv_id
-    row = db.query(RequestedPaperRow).filter(RequestedPaperRow.arxiv_id == base_id).first()
-    if not row:
-        raise HTTPException(status_code=404, detail="Requested paper not found")
-    db.delete(row)
-    db.commit()
-    return DeleteRequestedResponse(deleted=base_id)
-
 
 # --- Email Notifications ---
 
@@ -554,180 +398,7 @@ def list_new_paper_notifications(db: Session = Depends(get_session), _admin: boo
     ]
 
 
-# --- Import worker-generated JSON into DB and filesystem ---
 
-def _derive_arxiv_version_from_url(arxiv_url: Optional[str]) -> Optional[str]:
-    if not arxiv_url:
-        return None
-    try:
-        # Expect formats like https://arxiv.org/abs/<id>v3 (optional version)
-        m = re.search(r"/abs/[^/]+?(v\d+)$", arxiv_url)
-        if m:
-            return m.group(1)
-        return None
-    except Exception:
-        return None
-
-
-class ImportResult(BaseModel):
-    paper_uuid: str
-    status: str
-
-
-@router.post("/papers/import_json", response_model=JobDbStatus)
-def import_paper_json(paper: Dict[str, Any], db: Session = Depends(get_session), _admin: bool = Depends(require_admin)):
-    # Validate minimal required fields
-    paper_id = paper.get("paper_id")
-    arxiv_id = paper.get("arxiv_id")
-    if not isinstance(paper_id, str) or not paper_id:
-        raise HTTPException(status_code=400, detail="paper_id is required in JSON")
-    if not isinstance(arxiv_id, str) or not arxiv_id:
-        raise HTTPException(status_code=400, detail="arxiv_id is required in JSON")
-
-    title = paper.get("title") if isinstance(paper.get("title"), str) else None
-    authors = paper.get("authors") if isinstance(paper.get("authors"), str) else None
-    arxiv_url_val = paper.get("arxiv_url") if isinstance(paper.get("arxiv_url"), str) else None
-    arxiv_version_val = _derive_arxiv_version_from_url(arxiv_url_val)
-    thumbnail_data_url = paper.get("thumbnail_data_url") if isinstance(paper.get("thumbnail_data_url"), str) else None
-    pages = paper.get("pages") if isinstance(paper.get("pages"), list) else []
-    num_pages = len(pages)
-    processing_time_seconds = paper.get("processing_time_seconds")
-    if not isinstance(processing_time_seconds, (int, float)):
-        processing_time_seconds = None
-    usage_summary = paper.get("usage_summary") or {}
-    total_cost = usage_summary.get("total_cost") if isinstance(usage_summary, dict) else None
-    if not isinstance(total_cost, (int, float)):
-        total_cost = None
-    avg_cost_per_page = None
-    try:
-        if total_cost is not None and num_pages > 0:
-            avg_cost_per_page = float(total_cost) / float(num_pages)
-    except Exception:
-        avg_cost_per_page = None
-
-    now = datetime.utcnow()
-
-    # Upsert by arxiv_id
-    existing = db.query(PaperRow).filter(PaperRow.arxiv_id == arxiv_id).first()
-    if existing:
-        target_uuid = existing.paper_uuid
-        # Update existing row to completed
-        existing.status = "completed"
-        existing.error_message = None
-        existing.updated_at = now
-        existing.finished_at = now
-        existing.title = title
-        existing.authors = authors
-        existing.arxiv_url = arxiv_url_val
-        existing.arxiv_version = arxiv_version_val
-        existing.num_pages = num_pages
-        existing.processing_time_seconds = processing_time_seconds
-        existing.total_cost = total_cost
-        existing.avg_cost_per_page = avg_cost_per_page
-        existing.thumbnail_data_url = thumbnail_data_url
-        db.add(existing)
-        db.flush()
-        target_paper_row = existing
-    else:
-        # Ensure paper_uuid uniqueness; if collides with another arxiv_id, generate a new one
-        target_uuid = paper_id
-        by_uuid = db.query(PaperRow).filter(PaperRow.paper_uuid == target_uuid).first()
-        if by_uuid and by_uuid.arxiv_id != arxiv_id:
-            target_uuid = str(uuid.uuid4())
-        new_row = PaperRow(
-            paper_uuid=target_uuid,
-            arxiv_id=arxiv_id,
-            arxiv_version=arxiv_version_val,
-            arxiv_url=arxiv_url_val,
-            title=title,
-            authors=authors,
-            status="completed",
-            error_message=None,
-            created_at=now,
-            updated_at=now,
-            started_at=None,
-            finished_at=now,
-            num_pages=num_pages,
-            processing_time_seconds=processing_time_seconds,
-            total_cost=total_cost,
-            avg_cost_per_page=avg_cost_per_page,
-            thumbnail_data_url=thumbnail_data_url,
-        )
-        db.add(new_row)
-        db.flush()
-        target_paper_row = new_row
-
-    # Mark requested paper as processed, if exists
-    try:
-        req = db.query(RequestedPaperRow).filter(RequestedPaperRow.arxiv_id == arxiv_id).first()
-        if req and not getattr(req, 'processed', False):
-            req.processed = True
-            db.add(req)
-    except Exception:
-        logger.exception("Failed to mark requested paper as processed for arxiv_id=%s", arxiv_id)
-
-    # Create slug on import; require title/authors; error on collision
-    try:
-        slug = build_paper_slug(title, authors)
-        exists = db.query(PaperSlugRow).filter(PaperSlugRow.slug == slug).first()
-        if exists:
-            raise HTTPException(status_code=409, detail="Slug already exists")
-        db.add(PaperSlugRow(slug=slug, paper_uuid=target_paper_row.paper_uuid, tombstone=False, created_at=now))
-    except HTTPException:
-        raise
-    except Exception:
-        logger.exception("Failed to create slug for imported paper %s", target_paper_row.paper_uuid)
-
-    db.commit()
-
-    # Persist JSON to data/paperjsons using the chosen UUID; optionally normalize paper_id inside file
-    try:
-        base_dir = os.path.abspath(os.path.join(os.getcwd(), 'data', 'paperjsons'))
-        os.makedirs(base_dir, exist_ok=True)
-        target_path = os.path.join(base_dir, f"{target_uuid}.json")
-        # Ensure the internal paper_id matches the filename/DB UUID
-        if paper.get('paper_id') != target_uuid:
-            paper = dict(paper)
-            paper['paper_id'] = target_uuid
-        import json as _json
-        with open(target_path, 'w', encoding='utf-8') as f:
-            _json.dump(paper, f, ensure_ascii=False)
-    except Exception:
-        logger.exception("Failed to write imported JSON for paper_uuid=%s", target_uuid)
-
-    # Return the DB row
-    job = db.query(PaperRow).filter(PaperRow.paper_uuid == target_uuid).first()
-    if not job:
-        raise HTTPException(status_code=500, detail="Import completed but record not found")
-    return JobDbStatus(
-        paper_uuid=job.paper_uuid,
-        status=job.status,
-        error_message=job.error_message,
-        created_at=job.created_at,
-        updated_at=job.updated_at,
-        started_at=job.started_at,
-        finished_at=job.finished_at,
-        arxiv_id=job.arxiv_id,
-        arxiv_version=job.arxiv_version,
-        arxiv_url=job.arxiv_url,
-        title=job.title,
-        authors=job.authors,
-        num_pages=job.num_pages,
-        thumbnail_data_url=getattr(job, 'thumbnail_data_url', None),
-        processing_time_seconds=job.processing_time_seconds,
-        total_cost=job.total_cost,
-        avg_cost_per_page=job.avg_cost_per_page,
-    )
-
-
-@router.get("/admin/papers/{paper_uuid}/processing_metrics")
-def get_admin_processing_metrics(paper_uuid: str, _admin: bool = Depends(require_admin)):
-    try:
-        return get_processing_metrics_for_admin(paper_uuid)
-    except FileNotFoundError:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Paper not found")
-    except RuntimeError as e:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
 
 
 # --- Slug generation and resolution ---
@@ -792,6 +463,3 @@ def get_slug_for_paper(paper_uuid: UUID, db: Session = Depends(get_session)):
         raise HTTPException(status_code=404, detail="Slug not found for paper")
     logger.info("Resolved latest slug for paper_uuid=%s -> slug=%s", paper_uuid, row.slug)
     return ResolveSlugResponse(paper_uuid=row.paper_uuid, slug=row.slug, tombstone=False)
-
-
-## Minimal listing helpers moved to papers.client

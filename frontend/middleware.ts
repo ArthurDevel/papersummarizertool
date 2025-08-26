@@ -12,6 +12,8 @@ function unauthorized() {
 }
 
 function needsAdmin(url: URL, method: string): boolean {
+  // Protecting the management page and the management API endpoints
+
   const p = url.pathname
 
   // UI: protect management page
@@ -20,20 +22,8 @@ function needsAdmin(url: URL, method: string): boolean {
   // Protect write ops on local JSON route
   if (p === '/layouttests/data' && (method === 'POST' || method === 'DELETE')) return true
 
-  // Admin-only API endpoints
-  // papers admin: list, restart, delete, import
-  if (p === '/api/papers' && (method === 'GET')) return true
-  if (p === '/api/papers/import_json') return true
-  if (p.startsWith('/api/papers/') && (p.endsWith('/restart') || method === 'DELETE')) return true
-
-  // requested_papers admin: list/start/delete
-  if (p.startsWith('/api/requested_papers')) return true
-
-  // Public API allowlist (explicitly do NOT protect)
-  if (p === '/api/papers/request_arxiv') return false
-  if (p === '/api/papers/enqueue_arxiv') return false
-  if (p.startsWith('/api/papers/slug/')) return false
-  if (/^\/api\/papers\/[A-Za-z0-9\-]+\/slug$/.test(p)) return false
+  // Admin-only API endpoints (new admin namespace)
+  if (p.startsWith('/api/admin/')) return true
 
   return false
 }
