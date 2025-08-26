@@ -4,9 +4,11 @@ from typing import Union, List, Optional, Dict, Any
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from api.types.paper_processing_api_models import Paper, JobStatusResponse, MinimalPaperItem
+from api.types.paper_processing_endpoints import JobDbStatus
 from paperprocessor.client import process_paper_pdf, get_processed_result_path, build_paper_slug, get_processing_metrics_for_admin
 from shared.db import get_session
-from api.models import PaperRow, RequestedPaperRow, PaperSlugRow, NewPaperNotification
+from papers.models import PaperRow, RequestedPaperRow, PaperSlugRow, NewPaperNotification
+from papers import client as papers_client
 from shared.arxiv.client import normalize_id, parse_url, fetch_metadata, download_pdf
 from shared.arxiv.models import ArxivMetadata
 import os
@@ -16,8 +18,6 @@ from uuid import UUID
 from api.background_jobs import create_job, get_job_status, update_job_status
 import logging
 import re
-import hashlib
-import json as _json
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -131,24 +131,7 @@ async def enqueue_arxiv(req: EnqueueArxivRequest, db: Session = Depends(get_sess
     return EnqueueArxivResponse(job_db_id=job.id, paper_uuid=paper_uuid, status=job.status)
 
 
-class JobDbStatus(BaseModel):
-    paper_uuid: str
-    status: str
-    error_message: str | None = None
-    created_at: datetime
-    updated_at: datetime
-    started_at: datetime | None = None
-    finished_at: datetime | None = None
-    arxiv_id: str
-    arxiv_version: str | None = None
-    arxiv_url: str | None = None
-    title: str | None = None
-    authors: str | None = None
-    num_pages: int | None = None
-    thumbnail_data_url: str | None = None
-    processing_time_seconds: float | None = None
-    total_cost: float | None = None
-    avg_cost_per_page: float | None = None
+## Moved JobDbStatus to api/types/paper_processing_endpoints.py
 
 
  
@@ -156,40 +139,9 @@ class JobDbStatus(BaseModel):
 def list_minimal_papers(db: Session = Depends(get_session)):
     """
     Returns a minimal list of papers: paper_uuid, title, authors, thumbnail_data_url, slug.
-    Caches scanning of JSON files across requests by fingerprinting the directory contents.
-    Slug mappings are refreshed from DB each call to reflect latest state.
+    Delegates to papers.client.list_minimal_papers.
     """
-    base_dir = _paperjsons_dir()
-    logger.info("GET /papers/minimal base_dir=%s", base_dir)
-    fp = _build_dir_fingerprint(base_dir)
-    if not fp:
-        logger.warning("Minimal list fingerprint empty; directory may be missing or empty: %s", base_dir)
-        items: List[MinimalPaperItem] = []
-    else:
-        items = _get_minimal_items_for_fingerprint(fp, base_dir)
-    logger.info("Minimal list items_scanned=%d", len(items))
-
-    # Refresh slug mapping from DB (latest non-tombstone per paper_uuid)
-    slug_rows = (
-        db.query(PaperSlugRow)
-        .filter(PaperSlugRow.tombstone == False)  # noqa: E712
-        .all()
-    )
-    latest_by_uuid: Dict[str, Dict[str, Any]] = {}
-    for r in slug_rows:
-        puid = r.paper_uuid
-        if not puid:
-            continue
-        current = latest_by_uuid.get(puid)
-        if current is None or (r.created_at and current.get("created_at") and r.created_at > current["created_at"]):
-            latest_by_uuid[puid] = {"slug": r.slug, "created_at": r.created_at}
-
-    # Merge slugs into items
-    for it in items:
-        m = latest_by_uuid.get(it.paper_uuid)
-        it.slug = m["slug"] if m else None
-    merged_slugs = sum(1 for it in items if it.slug)
-    logger.info("Minimal list merged_slugs=%d", merged_slugs)
+    items = papers_client.list_minimal_papers(db)
     return items
 
 
@@ -197,7 +149,7 @@ def list_minimal_papers(db: Session = Depends(get_session)):
 @router.get("/papers/{paper_uuid}", response_model=JobDbStatus)
 def get_paper_by_uuid(paper_uuid: UUID, db: Session = Depends(get_session)):
     logger.info("GET /papers/%s", paper_uuid)
-    job = db.query(PaperRow).filter(PaperRow.paper_uuid == str(paper_uuid)).first()
+    job = papers_client.get_paper_by_uuid(db, str(paper_uuid))
     if not job:
         logger.warning("Paper not found for paper_uuid=%s", paper_uuid)
         raise HTTPException(status_code=404, detail="Job not found")
@@ -225,13 +177,8 @@ def get_paper_by_uuid(paper_uuid: UUID, db: Session = Depends(get_session)):
 
 @router.get("/papers", response_model=List[JobDbStatus])
 def list_papers(status: Optional[str] = None, limit: int = 500, db: Session = Depends(get_session), _admin: bool = Depends(require_admin)):
-    q = db.query(PaperRow)
-    if status:
-        statuses = [s.strip() for s in status.split(",") if s.strip()]
-        if statuses:
-            q = q.filter(PaperRow.status.in_(statuses))
-    q = q.order_by(PaperRow.created_at.desc()).limit(max(1, min(limit, 1000)))
-    rows = q.all()
+    statuses = [s.strip() for s in status.split(",") if s.strip()] if status else None
+    rows = papers_client.list_papers(db, statuses, limit)
     return [
         JobDbStatus(
             paper_uuid=r.paper_uuid,
@@ -280,33 +227,9 @@ def restart_paper(paper_uuid: UUID, _body: RestartPaperRequest | None = None, db
 
 @router.delete("/papers/{paper_uuid}", status_code=200)
 def delete_paper(paper_uuid: UUID, db: Session = Depends(get_session), _admin: bool = Depends(require_admin)):
-    row = db.query(PaperRow).filter(PaperRow.paper_uuid == str(paper_uuid)).first()
-    if not row:
+    ok = papers_client.delete_paper(db, str(paper_uuid))
+    if not ok:
         raise HTTPException(status_code=404, detail="Paper not found")
-    # Delete JSON file if exists
-    json_path = get_processed_result_path(str(paper_uuid))
-    try:
-        if os.path.exists(json_path):
-            os.remove(json_path)
-    except Exception:
-        pass
-    # Remove DB row
-    db.delete(row)
-    db.flush()
-
-    # Leave slug tombstones: keep slug entries but null out paper_uuid and mark tombstone
-    try:
-        slug_rows = db.query(PaperSlugRow).filter(PaperSlugRow.paper_uuid == paper_uuid).all()
-        now = datetime.utcnow()
-        for s in slug_rows:
-            s.paper_uuid = None
-            s.tombstone = True
-            s.deleted_at = now
-            db.add(s)
-    except Exception:
-        logger.exception("Failed to tombstone slugs for paper_uuid=%s", paper_uuid)
-
-    db.commit()
     return {"deleted": paper_uuid}
 
 
@@ -871,69 +794,4 @@ def get_slug_for_paper(paper_uuid: UUID, db: Session = Depends(get_session)):
     return ResolveSlugResponse(paper_uuid=row.paper_uuid, slug=row.slug, tombstone=False)
 
 
-# --- Minimal papers listing (for All Papers and Similar sidebar) ---
-
-def _paperjsons_dir() -> str:
-    return os.path.abspath(os.path.join(os.getcwd(), "data", "paperjsons"))
-
-
-def _build_dir_fingerprint(dir_path: str) -> str:
-    try:
-        entries = []
-        for name in os.listdir(dir_path):
-            if not name.lower().endswith(".json"):
-                continue
-            p = os.path.join(dir_path, name)
-            try:
-                st = os.stat(p)
-                entries.append((name, int(st.st_mtime_ns), int(st.st_size)))
-            except FileNotFoundError:
-                # File might disappear between listdir and stat; ignore
-                continue
-        entries.sort()
-        h = hashlib.sha256()
-        for name, mtime, size in entries:
-            h.update(name.encode("utf-8", errors="ignore"))
-            h.update(str(mtime).encode("ascii"))
-            h.update(str(size).encode("ascii"))
-        return h.hexdigest()
-    except Exception:
-        logger.exception("Failed to build fingerprint for %s", dir_path)
-        return ""
-
-
-def _scan_minimal_items(dir_path: str) -> List[MinimalPaperItem]:
-    items: List[MinimalPaperItem] = []
-    try:
-        files = [f for f in os.listdir(dir_path) if f.lower().endswith('.json')]
-        files.sort()
-    except FileNotFoundError:
-        return []
-    for name in files:
-        try:
-            paper_uuid = re.sub(r"\.json$", "", name, flags=re.IGNORECASE)
-            with open(os.path.join(dir_path, name), 'r', encoding='utf-8') as f:
-                data = _json.load(f)
-            title = data.get('title') if isinstance(data.get('title'), str) else None
-            authors = data.get('authors') if isinstance(data.get('authors'), str) else None
-            thumb = data.get('thumbnail_data_url') if isinstance(data.get('thumbnail_data_url'), str) else None
-            items.append(MinimalPaperItem(paper_uuid=paper_uuid, title=title, authors=authors, thumbnail_data_url=thumb))
-        except Exception:
-            logger.exception("Failed to read minimal fields from %s", name)
-            continue
-    return items
-
-
-
-from functools import lru_cache
-
-@lru_cache(maxsize=64)
-def _get_minimal_items_for_fingerprint(_fp: str, dir_path: str) -> List[MinimalPaperItem]:
-    """
-    Cache the minimal scan results per directory fingerprint. The first argument
-    is the fingerprint and is intentionally unused except to key the cache.
-    """
-    logger.info("Scanning minimal items for fp=%s dir=%s", _fp, dir_path)
-    items = _scan_minimal_items(dir_path)
-    logger.info("Scanned minimal items count=%d for fp=%s", len(items), _fp)
-    return items
+## Minimal listing helpers moved to papers.client

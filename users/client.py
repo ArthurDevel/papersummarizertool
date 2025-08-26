@@ -3,7 +3,7 @@ from pydantic import EmailStr
 from typing import List, Dict, Any
 from sqlalchemy.orm import Session
 
-from api.models import PaperRow, PaperSlugRow
+from papers.models import PaperRow, PaperSlugRow
 from users.models import UserRow, UserListRow, UserRequestRow
 
 logger = logging.getLogger(__name__)

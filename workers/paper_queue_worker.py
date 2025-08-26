@@ -11,7 +11,7 @@ from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from shared.db import SessionLocal
-from api.models import PaperRow, RequestedPaperRow, PaperSlugRow
+from papers.models import PaperRow, RequestedPaperRow, PaperSlugRow
 from shared.arxiv.client import fetch_pdf_for_processing
 from paperprocessor.client import process_paper_pdf, build_paper_slug, store_processed_result
 

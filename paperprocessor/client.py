@@ -19,7 +19,7 @@ from shared.arxiv.client import (
     fetch_metadata as arxiv_fetch_metadata,
 )
 from shared.db import SessionLocal
-from api.models import PaperRow
+from papers.models import PaperRow
 
 
 class PaperProcessorClient:
