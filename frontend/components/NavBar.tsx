@@ -28,7 +28,7 @@ export default async function NavBar({ className = '' }: NavBarProps) {
               Arxiv Search
             </Link>
           </li>
-          <li>
+          {/*<li>
             <Link href="/donate" className="text-sm text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors">
               Donate Inference
             </Link>
@@ -42,7 +42,7 @@ export default async function NavBar({ className = '' }: NavBarProps) {
             <Link href="/about" className="text-sm text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors">
               About Us
             </Link>
-          </li>
+          </li>*/}
           <li>
             <Link
               href="https://github.com/ArthurDevel/papersummarizertool"
