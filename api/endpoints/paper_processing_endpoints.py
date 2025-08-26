@@ -7,7 +7,7 @@ from api.types.paper_processing_api_models import Paper, JobStatusResponse, Mini
 from api.types.paper_processing_endpoints import JobDbStatus
 from paperprocessor.client import process_paper_pdf, get_processed_result_path, build_paper_slug
 from shared.db import get_session
-from papers.models import PaperRow, RequestedPaperRow, PaperSlugRow, NewPaperNotification
+from papers.models import PaperRow, RequestedPaperRow, PaperSlugRow
 from papers import client as papers_client
 from shared.arxiv.client import normalize_id, parse_url, fetch_metadata, download_pdf
 from shared.arxiv.models import ArxivMetadata
@@ -247,7 +247,6 @@ async def get_arxiv_metadata(arxiv_id_or_url: str):
 
 class RequestArxivRequest(BaseModel):
     url: str
-    notification_email: Optional[str] = None
 
 
 class RequestArxivResponse(BaseModel):
@@ -299,24 +298,6 @@ async def request_arxiv(req: RequestArxivRequest, db: Session = Depends(get_sess
                 db.refresh(slug_row)
             return RequestArxivResponse(state="exists", viewer_url=f"/paper/{slug_row.slug}")
 
-    # If an email was provided, save it for notification.
-    if req.notification_email:
-        # Basic email validation, just an @ check
-        if "@" not in req.notification_email:
-            raise HTTPException(status_code=400, detail="Invalid email address format")
-
-        existing_notification = (
-            db.query(NewPaperNotification)
-            .filter(NewPaperNotification.arxiv_id == arxiv_id)
-            .filter(NewPaperNotification.email == req.notification_email)
-            .first()
-        )
-        if not existing_notification:
-            notification_entry = NewPaperNotification(
-                email=req.notification_email,
-                arxiv_id=arxiv_id,
-            )
-            db.add(notification_entry)
 
     # Otherwise, upsert into requested_papers (increment count, update timestamps)
     now = datetime.utcnow()
@@ -374,28 +355,7 @@ async def request_arxiv(req: RequestArxivRequest, db: Session = Depends(get_sess
 
 
 
-# --- Email Notifications ---
-
-class EmailNotificationItem(BaseModel):
-    id: int
-    email: str
-    arxiv_id: str
-    requested_at: datetime
-    notified: bool
-
-
-@router.get("/notifications/new_paper", response_model=List[EmailNotificationItem])
-def list_new_paper_notifications(db: Session = Depends(get_session), _admin: bool = Depends(require_admin)):
-    rows = db.query(NewPaperNotification).order_by(NewPaperNotification.requested_at.desc()).all()
-    return [
-        EmailNotificationItem(
-            id=r.id,
-            email=r.email,
-            arxiv_id=r.arxiv_id,
-            requested_at=r.requested_at,
-            notified=r.notified,
-        ) for r in rows
-    ]
+# Notifications feature removed
 
 
 

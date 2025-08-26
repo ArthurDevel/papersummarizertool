@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { checkArxiv, getArxivMetadata, requestArxivPaper, type ArxivMetadata } from '../../../services/api';
+import { checkArxiv, getArxivMetadata, type ArxivMetadata } from '../../../services/api';
 import { ExternalLink } from 'lucide-react';
 import RequestPaperButton from '../../../components/RequestPaperButton';
 
@@ -12,10 +12,6 @@ export default function CheckPaperPage() {
   const [error, setError] = useState<string | null>(null);
   const [checking, setChecking] = useState<boolean>(true);
   const [metadata, setMetadata] = useState<ArxivMetadata | null>(null);
-  const [isRequesting, setIsRequesting] = useState<boolean>(false);
-  const [requestStatus, setRequestStatus] = useState<'idle' | 'success' | 'error'>('idle');
-  const [requestMessage, setRequestMessage] = useState<string>('');
-  const [notificationEmail, setNotificationEmail] = useState<string>('');
 
   useEffect(() => {
     const arxivId = (params?.arxivId || '').trim();
@@ -46,31 +42,6 @@ export default function CheckPaperPage() {
 
   const arxivId = (params?.arxivId || '').trim();
   const absUrl = metadata?.arxiv_id ? `https://arxiv.org/abs/${encodeURIComponent(metadata.arxiv_id)}` : (arxivId ? `https://arxiv.org/abs/${encodeURIComponent(arxivId)}` : '#');
-
-  const handleRequestPaper = async () => {
-    if (!absUrl || absUrl === '#') return;
-    setIsRequesting(true);
-    setRequestStatus('idle');
-    setRequestMessage('');
-    try {
-      const res = await requestArxivPaper(absUrl, notificationEmail);
-      if (res.state === 'requested') {
-        setRequestStatus('success');
-        setRequestMessage('Thank you for your request! The paper has been added to the request queue.');
-      } else if (res.state === 'exists' && res.viewer_url) {
-        // Should be rare, but handle it
-        router.push(res.viewer_url);
-      } else {
-        setRequestStatus('success');
-        setRequestMessage('This paper is already in our queue or has been processed.');
-      }
-    } catch (e: any) {
-      setRequestStatus('error');
-      setRequestMessage(e?.message || 'An unknown error occurred.');
-    } finally {
-      setIsRequesting(false);
-    }
-  };
 
 
   return (

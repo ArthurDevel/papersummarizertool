@@ -158,11 +158,11 @@ export type RequestArxivResponse = {
     viewer_url?: string | null;
 };
 
-export const requestArxivPaper = async (url: string, notificationEmail?: string): Promise<RequestArxivResponse> => {
+export const requestArxivPaper = async (url: string): Promise<RequestArxivResponse> => {
     const response = await fetch(`${API_URL}/papers/request_arxiv`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ url, notification_email: notificationEmail }),
+        body: JSON.stringify({ url }),
     });
     const responseText = await response.text();
     if (!response.ok) {
@@ -207,22 +207,7 @@ export const getArxivMetadata = async (arxivIdOrUrl: string): Promise<ArxivMetad
     return response.json();
 };
 
-export type EmailNotification = {
-    id: number;
-    email: string;
-    arxiv_id: string;
-    requested_at: string;
-    notified: boolean;
-}
-
-export const listEmailNotifications = async (): Promise<EmailNotification[]> => {
-    const response = await fetch(`${API_URL}/notifications/new_paper`);
-    if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
-    }
-    return response.json();
-}
+// Removed: EmailNotification types and listing API; notifications feature deprecated
 
 // --- Search APIs ---
 

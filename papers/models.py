@@ -69,14 +69,3 @@ class PaperSlugRow(Base):
     tombstone = Column(Boolean, nullable=False, default=False)
     deleted_at = Column(DateTime, nullable=True)
 
-
-class NewPaperNotification(Base):
-    __tablename__ = "new_paper_notifications"
-
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
-    email = Column(String(255), nullable=False)
-    arxiv_id = Column(String(255), nullable=False)
-    requested_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    notified = Column(Boolean, nullable=False, default=False)
-
-
