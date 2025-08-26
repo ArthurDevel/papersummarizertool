@@ -8,7 +8,7 @@ PROMPTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'pr
 
 def load_prompt(file_name: str) -> str:
     """
-    Loads a prompt from the shared arxiv prompts directory.
+    Loads a prompt from the search prompts directory.
     """
     file_path = os.path.join(PROMPTS_DIR, file_name)
     try:
@@ -20,5 +20,3 @@ def load_prompt(file_name: str) -> str:
     except Exception as e:
         logger.error(f"Error loading prompt file {file_path}: {e}")
         raise
-
-

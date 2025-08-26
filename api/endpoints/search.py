@@ -13,7 +13,8 @@ from api.types.search import (
     SearchItem,
     SimilarPapersResponse,
 )
-from shared.arxiv.client import search_by_user_query, find_similar_papers, _split_id_and_version
+from search.client import search_by_user_query, find_similar_papers
+from shared.arxiv.client import _split_id_and_version
 from shared.db import get_session
 from api.models import PaperSlugRow, PaperRow
 
