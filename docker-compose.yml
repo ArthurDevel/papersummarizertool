@@ -22,6 +22,32 @@ services:
         condition: service_started
     restart: unless-stopped
 
+  feedbackrouter:
+    image: arthurdevel/evalrouter:0.1.0
+    environment:
+      MYSQL_HOST: feedbackrouter-mysql
+      MYSQL_USER: feedbackrouter_app
+      MYSQL_PASSWORD: ${FEEDBACKROUTER_MYSQL_PASSWORD}
+      MYSQL_DATABASE: feedbackrouter
+    ports:
+      - "${FEEDBACKROUTER_HOSTPORT_API:-18000}:8000" # API at http://localhost:${FEEDBACKROUTER_HOSTPORT_API:-18000}/v1
+      - "${FEEDBACKROUTER_HOSTPORT_UI:-13000}:3000"  # UI  at http://localhost:${FEEDBACKROUTER_HOSTPORT_UI:-13000}
+    depends_on:
+      - feedbackrouter-mysql
+    restart: unless-stopped
+
+  feedbackrouter-mysql:
+    image: mysql:8.0
+    command: --default-authentication-plugin=mysql_native_password
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ${FEEDBACKROUTER_MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: feedbackrouter
+      MYSQL_USER: feedbackrouter_app
+      MYSQL_PASSWORD: ${FEEDBACKROUTER_MYSQL_PASSWORD}
+    volumes:
+      - feedbackrouter-mysql-data:/var/lib/mysql
+
   mysql:
     image: mysql:8.0
     command: --default-authentication-plugin=mysql_native_password
@@ -68,3 +94,4 @@ services:
 
 volumes:
   qdrant-data: 
+  feedbackrouter-mysql-data:
