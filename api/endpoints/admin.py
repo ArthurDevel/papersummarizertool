@@ -266,13 +266,24 @@ def admin_import_paper_json(paper: Dict[str, Any], db: Session = Depends(get_ses
         db.flush()
         target_paper_row = new_row
 
-    # Create slug on import; require title/authors; error on collision
+    # Create slug on import; idempotent for same paper, strict for true collisions
     try:
-        slug = build_paper_slug(title, authors)
-        exists = db.query(PaperSlugRow).filter(PaperSlugRow.slug == slug).first()
-        if exists:
-            raise HTTPException(status_code=409, detail="Slug already exists")
-        db.add(PaperSlugRow(slug=slug, paper_uuid=target_paper_row.paper_uuid, tombstone=False, created_at=now))
+        # Reuse existing non-tombstoned slug for this paper if present
+        existing_for_paper = (
+            db.query(PaperSlugRow)
+            .filter(PaperSlugRow.paper_uuid == target_paper_row.paper_uuid, PaperSlugRow.tombstone == False)  # noqa: E712
+            .order_by(PaperSlugRow.created_at.desc())
+            .first()
+        )
+        if not existing_for_paper:
+            slug = build_paper_slug(title, authors)
+            exists = db.query(PaperSlugRow).filter(PaperSlugRow.slug == slug).first()
+            if exists:
+                if exists.paper_uuid != target_paper_row.paper_uuid:
+                    raise HTTPException(status_code=409, detail="Slug already exists")
+                # else idempotent import for same paper; do not insert
+            else:
+                db.add(PaperSlugRow(slug=slug, paper_uuid=target_paper_row.paper_uuid, tombstone=False, created_at=now))
     except HTTPException:
         raise
     except Exception:

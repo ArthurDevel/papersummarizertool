@@ -66,13 +66,27 @@ async def _process_one(job: PaperRow) -> None:
             thumb_val = result.get('thumbnail_data_url')
             j.thumbnail_data_url = thumb_val if isinstance(thumb_val, str) else None
             s.add(j)
-            # Create slug on completion; strict: require title and authors; throw on collision
+            # Create slug on completion; idempotent for same paper, strict for true collisions
             try:
-                slug = build_paper_slug(j.title, j.authors)
-                exists = s.query(PaperSlugRow).filter(PaperSlugRow.slug == slug).first()
-                if exists:
-                    raise ValueError(f"Slug collision for '{slug}'")
-                s.add(PaperSlugRow(slug=slug, paper_uuid=j.paper_uuid, tombstone=False, created_at=datetime.utcnow()))
+                # If this paper already has a non-tombstoned slug, reuse it (idempotent restart)
+                existing_for_paper = (
+                    s.query(PaperSlugRow)
+                    .filter(PaperSlugRow.paper_uuid == j.paper_uuid, PaperSlugRow.tombstone == False)  # noqa: E712
+                    .order_by(PaperSlugRow.created_at.desc())
+                    .first()
+                )
+                if existing_for_paper:
+                    slug = existing_for_paper.slug
+                else:
+                    slug = build_paper_slug(j.title, j.authors)
+                    exists = s.query(PaperSlugRow).filter(PaperSlugRow.slug == slug).first()
+                    if exists:
+                        # If slug already maps to this paper, reuse; otherwise it's a true collision
+                        if exists.paper_uuid != j.paper_uuid:
+                            raise ValueError(f"Slug collision for '{slug}'")
+                        # Reuse without inserting a duplicate row
+                    else:
+                        s.add(PaperSlugRow(slug=slug, paper_uuid=j.paper_uuid, tombstone=False, created_at=datetime.utcnow()))
             except Exception:
                 logger.exception("Failed to create slug for paper_uuid=%s", j.paper_uuid)
                 raise

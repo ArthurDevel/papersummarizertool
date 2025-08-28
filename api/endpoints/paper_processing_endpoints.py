@@ -241,16 +241,31 @@ def create_slug(paper_uuid: UUID, db: Session = Depends(get_session)):
     if not job:
         logger.warning("Cannot create slug: paper not found paper_uuid=%s", paper_uuid)
         raise HTTPException(status_code=404, detail="Paper not found")
+
+    # If this paper already has a non-tombstoned slug, return it (idempotent)
+    existing_for_paper = (
+        db.query(PaperSlugRow)
+        .filter(PaperSlugRow.paper_uuid == str(paper_uuid))
+        .filter(PaperSlugRow.tombstone == False)  # noqa: E712
+        .order_by(PaperSlugRow.created_at.desc())
+        .first()
+    )
+    if existing_for_paper:
+        return ResolveSlugResponse(paper_uuid=existing_for_paper.paper_uuid, slug=existing_for_paper.slug, tombstone=False)
+
     slug = build_paper_slug(job.title, job.authors)
-    # Enforce uniqueness strictly; on collision, throw 409
+    # Enforce uniqueness strictly; allow if it already maps to this paper
     existing = db.query(PaperSlugRow).filter(PaperSlugRow.slug == slug).first()
     if existing:
-        raise HTTPException(status_code=409, detail="Slug already exists")
+        if existing.paper_uuid != str(paper_uuid):
+            raise HTTPException(status_code=409, detail="Slug already exists")
+        return ResolveSlugResponse(paper_uuid=existing.paper_uuid, slug=existing.slug, tombstone=bool(existing.tombstone))
+
     row = PaperSlugRow(slug=slug, paper_uuid=paper_uuid, tombstone=False, created_at=datetime.utcnow())
     db.add(row)
     db.commit()
     db.refresh(row)
-    return ResolveSlugResponse(paper_uuid=row.paper_uuid, slug=row.slug, tombstone=bool(row.tombstone))
+    return ResolveSlugResponse(paper_uuid=row.paper_uuid, slug=row.slug, tombstone=False)
 
 
 @router.get("/papers/{paper_uuid}/slug", response_model=ResolveSlugResponse)

@@ -418,7 +418,7 @@ export default function LayoutTestsPage() {
       </div>
 
       {/* Content */}
-      <main ref={mainRef} className="flex-1 p-4 flex flex-col">
+      <main ref={mainRef} className="flex-1 min-w-0 p-4 flex flex-col">
         {paperData ? (
           <>
             <div className="mb-4 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-md overflow-hidden p-4">
