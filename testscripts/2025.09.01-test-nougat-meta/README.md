@@ -1,0 +1,2 @@
+- use Python 3.11
+- create new .venv using requirements.txt in this folder
