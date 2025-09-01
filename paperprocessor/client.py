@@ -108,28 +108,69 @@ class PaperProcessorClient:
             "asset_mentions": llm_analysis["asset_mentions"],
         }
 
-    async def _generate_toc(self, headers: List[Dict[str, Any]], usage_hook=None) -> List[Dict[str, Any]]:
-        """Generates a hierarchical table of contents from a flat list of headers."""
-        logging.info("Step 3: Generating Table of Contents.")
-        system_prompt = self._load_prompt("2_generate_toc.md")
-        user_prompt = json.dumps({"headers": headers})
+    def _build_toc_programmatic(self, headers: List[Dict[str, Any]], num_pages: int) -> List[Dict[str, Any]]:
+        """Build a hierarchical Table of Contents deterministically from flat headers.
 
-        toc_result = await openrouter.get_json_response(
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            model="google/gemini-2.5-pro"
-        )
-        if usage_hook:
-            try:
-                usage_hook(toc_result)
-            except Exception:
-                logging.exception("Failed to record usage for ToC generation")
-        response = toc_result.parsed_json
-        logging.info("Successfully generated Table of Contents.")
-        if not isinstance(response, list):
-            logging.warning("ToC generation returned non-list; continuing with empty ToC")
+        Assumptions:
+        - Each header has fields: 'title' (string), 'level' (int), 'page' (int)
+        - 'title' does not include numbering; hierarchy is given solely by 'level'
+        - 'page' is 1-based
+        """
+        logging.info("Step 3: Building Table of Contents programmatically.")
+
+        if not headers:
             return []
-        return response
+
+        # Stable sort by (page, original_index) to ensure deterministic ordering
+        indexed_headers: List[tuple[int, Dict[str, Any]]] = list(enumerate(headers))
+        indexed_headers.sort(key=lambda item: (int(item[1].get("page", 1) or 1), item[0]))
+
+        toc: List[Dict[str, Any]] = []
+        stack: List[Dict[str, Any]] = []
+
+        for _, h in indexed_headers:
+            try:
+                level = int(h.get("level"))
+            except Exception:
+                # Prior step guarantees presence; treat failure as level 1
+                level = 1
+            try:
+                page = int(h.get("page"))
+            except Exception:
+                page = 1
+            title = (h.get("title") or "").strip()
+
+            node: Dict[str, Any] = {
+                "level": level,
+                "section_title": title,
+                "start_page": page,
+                "end_page": page,  # temporary; will be finalized as we see following headers
+                "rewritten_content": None,
+                "summary": None,
+                "subsections": [],
+            }
+
+            # Close all sections at deeper or equal levels
+            while stack and level <= int(stack[-1]["level"]):
+                finished = stack.pop()
+                finished_end_page = max(int(finished["start_page"]), page - 1)
+                finished["end_page"] = finished_end_page
+
+            # Attach to parent or as top-level
+            if stack:
+                stack[-1]["subsections"].append(node)
+            else:
+                toc.append(node)
+
+            stack.append(node)
+
+        # Close any remaining open sections to the end of the document
+        while stack:
+            finished = stack.pop()
+            finished["end_page"] = max(int(finished["start_page"]), int(num_pages))
+
+        logging.info("Programmatic Table of Contents built successfully.")
+        return toc
 
     async def _explain_asset(self, asset_info: Dict[str, Any], all_images: List[Image.Image], toc: List[Dict[str, Any]], asset_mentions: List[Dict[str, Any]], usage_hook=None) -> Dict[str, Any]:
         """Explains a single asset by providing context images to an LLM."""
@@ -389,8 +430,12 @@ class PaperProcessorClient:
 
         extraction_result = await self._extract_assets_and_mentions(pdf_contents, images, _record_usage)
         
-        # Step 4: Generate Table of Contents
-        toc = await self._generate_toc(extraction_result["headers"], _record_usage)
+        # Step 4: Generate Table of Contents (programmatic)
+        try:
+            toc = self._build_toc_programmatic(extraction_result["headers"], num_pages=len(images))
+        except Exception:
+            logging.exception("Failed to build Table of Contents from headers; continuing with empty ToC")
+            toc = []
 
         # Steps 5 & 6: Explain Assets and Process Sections (I/O-bound, run concurrently)
         asset_explanations_task = self._explain_assets(
