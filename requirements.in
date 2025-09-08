@@ -29,6 +29,7 @@ scipy==1.13.1
 
 # AI 
 openai==1.79.0
+mistralai
 
 # New database and vector store clients
 PyMySQL==1.1.0

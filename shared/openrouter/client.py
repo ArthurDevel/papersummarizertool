@@ -12,7 +12,8 @@ from shared.openrouter.models import LLMCallResult, LLMJsonCallResult
 logger = logging.getLogger(__name__)
 
 # Constants (keep it simple)
-BASE_URL = "http://feedbackrouter:8000/v1"
+#BASE_URL = "http://feedbackrouter:8000/v1"
+BASE_URL = "https://openrouter.ai/api/v1"
 TIMEOUT_SECONDS = 300
 
 # Module-level headers using configured API key
