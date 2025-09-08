@@ -53,3 +53,6 @@ ocr_output.txt
 
 # Data folder
 data/
+
+# Notebook outputs
+paperprocessor_v2/notebooks/outputs/
