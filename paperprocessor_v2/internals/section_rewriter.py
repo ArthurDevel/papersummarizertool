@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 import re
@@ -195,11 +196,24 @@ async def rewrite_sections(document: ProcessedDocument) -> None:
 
     # 2) Build flat sections
     sections = _build_flat_sections(document.final_markdown, spans)
-
-    # 3) Rewrite each section sequentially
+    
+    # 3) Rewrite each section in parallel
+    # 3a) Create tasks for all sections
+    rewrite_tasks = []
     for section in sections:
-        rewritten = await _rewrite_section_text_async(section.original_content)
-        section.rewritten_content = rewritten
+        task = _rewrite_section_text_async(section.original_content)
+        rewrite_tasks.append(task)
+    
+    # 3b) Execute all section rewrites in parallel (maintains section order)
+    try:
+        rewritten_results = await asyncio.gather(*rewrite_tasks)
+    except Exception as e:
+        logger.error(f"Section rewriting failed during parallel processing: {e}")
+        raise RuntimeError(f"Section rewriting failed during parallel processing: {e}") from e
+    
+    # 3c) Assign rewritten content back to sections in order
+    for section, rewritten_content in zip(sections, rewritten_results):
+        section.rewritten_content = rewritten_content
 
     # 4) Persist on document
     document.sections = sections

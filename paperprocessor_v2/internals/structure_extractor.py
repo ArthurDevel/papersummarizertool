@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import json
 import os
@@ -115,6 +116,29 @@ def _parse_json_with_fallback(content: str, context: str) -> Dict[str, Any]:
             return {"document_type": "research_paper", "elements": [], "notes": "JSON parsing failed"}
         else:  # header extraction context
             return {"headers": []}
+
+
+def _validate_unique_element_types(structure_data: Dict[str, Any]) -> None:
+    """
+    Validate that each element type appears only once in the structure analysis.
+    Raises RuntimeError if duplicate element types are found.
+    
+    Args:
+        structure_data: Structure analysis results to validate
+    """
+    element_types_seen = set()
+    duplicates = set()
+    
+    for element in structure_data.get('elements', []):
+        element_type = element.get('element_type')
+        if element_type:
+            if element_type in element_types_seen:
+                duplicates.add(element_type)
+            else:
+                element_types_seen.add(element_type)
+    
+    if duplicates:
+        raise RuntimeError(f"Duplicate element types found in structure analysis: {sorted(duplicates)}. Each element type must be unique.")
 
 
 def _create_element_type_to_level_mapping(structure_data: Dict[str, Any]) -> Dict[str, int]:
@@ -236,12 +260,16 @@ def _validate_and_clean_headers(headers_data: List[Dict[str, Any]], page_number:
 async def _analyze_document_structure(pages_base64: List[str]) -> Dict[str, Any]:
     """
     Step 3a: Analyze document structure from first pages.
+    Validates that each element type is unique.
     
     Args:
         pages_base64: List of base64-encoded page images
         
     Returns:
-        Document structure analysis results
+        Document structure analysis results with unique element types
+        
+    Raises:
+        RuntimeError: If duplicate element types are found
     """
     logger.info(f"Analyzing document structure from {len(pages_base64)} pages")
     
@@ -261,6 +289,9 @@ async def _analyze_document_structure(pages_base64: List[str]) -> Dict[str, Any]
         response.parsed_json if isinstance(response.parsed_json, str) else json.dumps(response.parsed_json),
         "structure analysis"
     )
+    
+    # Step 4: Validate that element types are unique
+    _validate_unique_element_types(structure_data)
     
     logger.info(f"Found {len(structure_data.get('elements', []))} element types in document")
     return structure_data
@@ -347,7 +378,7 @@ async def extract_structure(document: ProcessedDocument) -> None:
     
     logger.info(f"Using first {len(structure_pages_base64)} pages for structure analysis")
     
-    # Step 2: Analyze document structure
+    # Step 2: Analyze document structure and validate uniqueness
     try:
         structure_data = await _analyze_document_structure(structure_pages_base64)
     except Exception as e:
@@ -365,27 +396,37 @@ async def extract_structure(document: ProcessedDocument) -> None:
     # Step 4: Create mapping from element types to levels
     element_type_to_level_mapping = _create_element_type_to_level_mapping(structure_data)
     
-    # Step 5: Extract headers from each page
-    all_headers = []
-    
+    # Step 5: Extract headers from each page (in parallel)
+    # Step 5a: Validate all pages have img_base64 before starting parallel processing
     for page in document.pages:
         if not page.img_base64:
             logger.warning(f"Page {page.page_number} missing img_base64 for header extraction")
             raise RuntimeError(f"Page {page.page_number} missing img_base64")
-        
-        try:
-            page_headers = await _extract_headers_from_page(
-                page.img_base64,
-                page.page_number,
-                extraction_prompt,
-                element_type_to_level_mapping,
-                page.ocr_markdown
-            )
-            all_headers.extend(page_headers)
-            
-        except Exception as e:
-            logger.error(f"Header extraction failed for page {page.page_number}: {e}")
-            raise RuntimeError(f"Header extraction failed for page {page.page_number}: {e}") from e
+    
+    # Step 5b: Create tasks for parallel processing
+    page_tasks = []
+    for page in document.pages:
+        task = _extract_headers_from_page(
+            page.img_base64,
+            page.page_number,
+            extraction_prompt,
+            element_type_to_level_mapping,
+            page.ocr_markdown
+        )
+        page_tasks.append(task)
+    
+    # Step 5c: Execute all page extractions in parallel (maintains page order)
+    try:
+        page_results = await asyncio.gather(*page_tasks)
+    except Exception as e:
+        # Find which page failed by checking the exception
+        logger.error(f"Header extraction failed during parallel processing: {e}")
+        raise RuntimeError(f"Header extraction failed during parallel processing: {e}") from e
+    
+    # Step 5d: Combine results from all pages
+    all_headers = []
+    for headers in page_results:
+        all_headers.extend(headers)
     
     # Step 6: Write extracted headers to debug output
     headers_debug_data = {

@@ -14,7 +14,7 @@ Be precise and detailed in your analysis. This structure understanding will be u
 
 ## Output Format
 
-Return EXACTLY this JSON structure (no extra text, no markdown formatting, just JSON). All fields are required:
+Return EXACTLY this JSON structure (no extra text, no markdown formatting, just JSON). All fields are required. Each element type must be unique:
 
 ```json
 {

@@ -43,9 +43,9 @@ COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Pre-download and cache the layout model to a non-volume-mounted path in a single layer
-RUN mkdir -p /models && \
-    wget -O /models/publaynet_config.yml "https://www.dropbox.com/s/f3b12qc4hc0yh4m/config.yml?dl=1" && \
-    wget -O /models/publaynet_model.pth "https://www.dropbox.com/s/dgy9c10wykk4lq4/model_final.pth?dl=1"
+# RUN mkdir -p /models && \
+    #wget -O /models/publaynet_config.yml "https://www.dropbox.com/s/f3b12qc4hc0yh4m/config.yml?dl=1" && \
+    #wget -O /models/publaynet_model.pth "https://www.dropbox.com/s/dgy9c10wykk4lq4/model_final.pth?dl=1"
 
 # Copy the built frontend from the builder stage first so this layer stays cached when backend-only files change
 COPY --from=frontend-builder /app/frontend/.next ./frontend/.next

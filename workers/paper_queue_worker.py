@@ -151,12 +151,7 @@ async def worker_loop():
             await asyncio.sleep(10)
 
 
-def main():
-    asyncio.run(worker_loop())
 
-
-if __name__ == "__main__":
-    main()
 
 # --- Local helpers (remove v1 dependency) ---
 def _get_processed_result_path(paper_uuid: str) -> str:
@@ -200,3 +195,9 @@ def _build_paper_slug(title: str | None, authors: str | None) -> str:
     return s[:120]
 
 
+def main():
+    asyncio.run(worker_loop())
+
+
+if __name__ == "__main__":
+    main()
