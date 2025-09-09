@@ -10,12 +10,33 @@ from paperprocessor_v2.models import ProcessedDocument, Header
 logger = logging.getLogger(__name__)
 
 ### CONSTANTS ###
-STRUCTURE_MODEL = "google/gemini-2.5-pro"
-EXTRACTION_MODEL = "google/gemini-2.5-flash"
-MAX_STRUCTURE_PAGES = 20
+STRUCTURE_ANALYSIS_MODEL = "google/gemini-2.5-pro"
+HEADER_EXTRACTION_MODEL = "google/gemini-2.5-flash"
+MAX_PAGES_FOR_STRUCTURE_ANALYSIS = 20
 
 
 ### HELPER FUNCTIONS ###
+def _write_debug_output(data: Dict[str, Any], filename: str) -> None:
+    """
+    Write debugging data to JSON file in the debugging output directory.
+    
+    Args:
+        data: The data to write to the file
+        filename: Name of the output file (should end with .json)
+    """
+    # Create path relative to this file's location
+    debug_dir = os.path.join(os.path.dirname(__file__), '..', 'debugging_output')
+    os.makedirs(debug_dir, exist_ok=True)
+    
+    # Write the data to the specified file
+    file_path = os.path.join(debug_dir, filename)
+    
+    with open(file_path, 'w', encoding='utf-8') as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+    
+    logger.info(f"Debug output written to {file_path}")
+
+
 def _load_structure_analysis_prompt() -> str:
     """Load the document structure analysis prompt."""
     prompts_dir = os.path.join(os.path.dirname(__file__), '..', 'prompts')
@@ -60,17 +81,18 @@ def _create_header_extraction_prompt_with_structure(structure_data: Dict[str, An
     """Create detailed header extraction prompt based on structure analysis."""
     base_prompt = _load_header_extraction_prompt()
     
-    # Add structure reference to the prompt
-    structure_reference = "\n\nDOCUMENT STRUCTURE REFERENCE:\n"
+    # Create structure reference to replace the placeholder
+    structure_reference = ""
     
     for element in structure_data.get('elements', []):
         structure_reference += f"\n**{element['element_type']}** (Level {element['level']})"
-        structure_reference += f"\n  Recognition: {element['recognition_pattern']}"
+        structure_reference += f"\n  How to recognize this element: {element['recognition_pattern']}"
         examples = element.get('examples', [])[:2]  # Take first 2 examples
         structure_reference += f"\n  Examples: {', '.join(examples)}"
         structure_reference += "\n"
     
-    return base_prompt + structure_reference
+    # Replace the placeholder with the actual structure reference
+    return base_prompt.replace("<<document_structure>>", structure_reference.strip())
 
 
 def _parse_json_with_fallback(content: str, context: str) -> Dict[str, Any]:
@@ -95,9 +117,36 @@ def _parse_json_with_fallback(content: str, context: str) -> Dict[str, Any]:
             return {"headers": []}
 
 
+def _create_element_type_to_level_mapping(structure_data: Dict[str, Any]) -> Dict[str, int]:
+    """Create a mapping from element type to hierarchical level from structure analysis."""
+    element_type_to_level = {}
+    
+    for element in structure_data.get('elements', []):
+        element_type = element.get('element_type')
+        level = element.get('level')
+        
+        if element_type and level is not None:
+            element_type_to_level[element_type] = level
+    
+    return element_type_to_level
+
+
+def _normalize_heading_text(text: str) -> str:
+    """
+    Lowercase and collapse whitespace for robust matching.
+    
+    Args:
+        text: Text to normalize
+        
+    Returns:
+        Normalized text for comparison
+    """
+    return " ".join((text or "").lower().split())
+
+
 def _find_header_line_in_markdown(header_text: str, markdown_content: str) -> Optional[int]:
     """
-    Find the line number where a header appears in markdown content.
+    Find the line number where a header appears in markdown content using RapidFuzz.
     
     Args:
         header_text: The header text to search for
@@ -109,56 +158,75 @@ def _find_header_line_in_markdown(header_text: str, markdown_content: str) -> Op
     if not markdown_content or not header_text:
         return None
     
+    try:
+        from rapidfuzz import fuzz
+    except ImportError:
+        logger.error("rapidfuzz is required for header line matching. Install with: pip install rapidfuzz")
+        return None
+    
     lines = markdown_content.split('\n')
-    header_text_clean = header_text.strip().lower()
+    query = _normalize_heading_text(header_text)
+    
+    best_score = -1
+    best_line_idx = None
+    threshold = 85
     
     for i, line in enumerate(lines):
-        line_clean = line.strip().lower()
+        # Remove markdown formatting for comparison
+        line_no_markdown = line.lstrip('#').strip().replace('**', '').replace('*', '')
+        line_normalized = _normalize_heading_text(line_no_markdown)
         
-        # Direct match
-        if header_text_clean in line_clean:
-            return i
+        if not line_normalized:  # Skip empty lines
+            continue
         
-        # Try removing markdown formatting (# symbols, ** bold, etc.)
-        line_no_markdown = line_clean.lstrip('#').strip().replace('**', '').replace('*', '')
-        if header_text_clean in line_no_markdown or line_no_markdown in header_text_clean:
-            return i
+        score = fuzz.token_set_ratio(query, line_normalized)
+        if score > best_score:
+            best_score = score
+            best_line_idx = i
     
-    return None
+    if best_line_idx is not None and best_score >= threshold:
+        logger.debug(f"Found header '{header_text}' at line {best_line_idx} with score {best_score}")
+        return best_line_idx
+    else:
+        logger.debug(f"Header '{header_text}' not found with sufficient similarity (best score: {best_score})")
+        return None
 
 
-def _validate_and_clean_headers(headers_data: List[Dict[str, Any]], page_number: int) -> List[Dict[str, Any]]:
+def _validate_and_clean_headers(headers_data: List[Dict[str, Any]], page_number: int, element_type_to_level_mapping: Dict[str, int]) -> List[Dict[str, Any]]:
     """Validate and clean headers data from API response."""
     valid_headers = []
     
     for i, header in enumerate(headers_data):
         if not isinstance(header, dict):
             logger.warning(f"Header {i+1} on page {page_number} is not a dict, skipping")
-            continue
+            raise RuntimeError(f"Header {i+1} on page {page_number} is not a dict. Raw response: {header}")
         
         # Check required fields
-        required_fields = ["text", "element_type", "level"]
+        required_fields = ["text", "element_type"]
         missing_fields = [field for field in required_fields if field not in header or header[field] is None]
         
         if missing_fields:
             logger.warning(f"Header {i+1} on page {page_number} missing fields {missing_fields}, skipping")
-            raise RuntimeError(f"Header {i+1} on page {page_number} missing fields {missing_fields}")
-        
-        # Validate level is an integer
-        if not isinstance(header["level"], int):
-            logger.warning(f"Header {i+1} on page {page_number} has invalid level '{header['level']}', skipping")
-            raise RuntimeError(f"Header {i+1} on page {page_number} has invalid level '{header['level']}'")
+            raise RuntimeError(f"Header {i+1} on page {page_number} missing fields {missing_fields}. Raw response: {header}")
         
         # Clean and validate text
         header_text = str(header["text"]).strip()
         if not header_text:
             logger.warning(f"Header {i+1} on page {page_number} has empty text, skipping")
-            raise RuntimeError(f"Header {i+1} on page {page_number} has empty text")
+            raise RuntimeError(f"Header {i+1} on page {page_number} has empty text. Raw response: {header}")
+        
+        # Get element type and look up its level
+        element_type = str(header["element_type"]).strip()
+        level = element_type_to_level_mapping.get(element_type)
+        
+        if level is None:
+            logger.warning(f"Header {i+1} on page {page_number} has unknown element_type '{element_type}', skipping")
+            raise RuntimeError(f"Header {i+1} on page {page_number} has unknown element_type '{element_type}'. Raw response: {header}")
         
         valid_headers.append({
             "text": header_text,
-            "element_type": str(header["element_type"]).strip(),
-            "level": int(header["level"]),
+            "element_type": element_type,
+            "level": level,
             "page_number": page_number
         })
     
@@ -185,7 +253,7 @@ async def _analyze_document_structure(pages_base64: List[str]) -> Dict[str, Any]
     response = await openrouter_client.get_multimodal_json_response(
         system_prompt=system_prompt,
         user_prompt_parts=user_prompt_parts,
-        model=STRUCTURE_MODEL
+        model=STRUCTURE_ANALYSIS_MODEL
     )
     
     # Step 3: Parse structure response with error handling
@@ -198,7 +266,7 @@ async def _analyze_document_structure(pages_base64: List[str]) -> Dict[str, Any]
     return structure_data
 
 
-async def _extract_headers_from_page(page_base64: str, page_number: int, extraction_prompt: str, page_markdown: Optional[str] = None) -> List[Header]:
+async def _extract_headers_from_page(page_base64: str, page_number: int, extraction_prompt: str, element_type_to_level_mapping: Dict[str, int], page_markdown: Optional[str] = None) -> List[Header]:
     """
     Extract headers from a single page.
     
@@ -213,15 +281,14 @@ async def _extract_headers_from_page(page_base64: str, page_number: int, extract
     """
     # Step 1: Create single-page prompt
     user_prompt_parts = [
-        {"type": "text", "text": extraction_prompt},
         {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{page_base64}"}}
     ]
     
     # Step 2: Call OpenRouter API for header extraction
     response = await openrouter_client.get_multimodal_json_response(
-        system_prompt="You are an expert at extracting headers from research paper pages.",
+        system_prompt=extraction_prompt,
         user_prompt_parts=user_prompt_parts,
-        model=EXTRACTION_MODEL
+        model=HEADER_EXTRACTION_MODEL
     )
     
     # Step 3: Parse and validate response
@@ -232,7 +299,7 @@ async def _extract_headers_from_page(page_base64: str, page_number: int, extract
     
     # Step 4: Validate and clean headers
     headers_data = page_data.get("headers", [])
-    valid_headers_data = _validate_and_clean_headers(headers_data, page_number)
+    valid_headers_data = _validate_and_clean_headers(headers_data, page_number, element_type_to_level_mapping)
     
     # Step 5: Convert to Header objects
     headers = []
@@ -246,6 +313,7 @@ async def _extract_headers_from_page(page_base64: str, page_number: int, extract
             text=header_data["text"],
             level=header_data["level"],
             page_number=page_number,
+            element_type=header_data["element_type"],
             markdown_line_number=markdown_line_number
         )
         headers.append(header)
@@ -266,8 +334,8 @@ async def extract_structure(document: ProcessedDocument) -> None:
         logger.warning("No pages available for structure extraction")
         return
     
-    # Step 1: Get pages for structure analysis (first MAX_STRUCTURE_PAGES)
-    structure_pages = document.pages[:MAX_STRUCTURE_PAGES]
+    # Step 1: Get pages for structure analysis (first MAX_PAGES_FOR_STRUCTURE_ANALYSIS)
+    structure_pages = document.pages[:MAX_PAGES_FOR_STRUCTURE_ANALYSIS]
     structure_pages_base64 = []
     
     for page in structure_pages:
@@ -285,11 +353,19 @@ async def extract_structure(document: ProcessedDocument) -> None:
     except Exception as e:
         logger.error(f"Document structure analysis failed: {e}")
         raise RuntimeError(f"Structure analysis failed: {e}") from e
+
+    logger.info(f"Structure data: {structure_data}")
+    
+    # Step 2a: Write structure data to debug output
+    _write_debug_output(structure_data, "structure_extractor_structure.json")
     
     # Step 3: Create extraction prompt with structure information
     extraction_prompt = _create_header_extraction_prompt_with_structure(structure_data)
     
-    # Step 4: Extract headers from each page
+    # Step 4: Create mapping from element types to levels
+    element_type_to_level_mapping = _create_element_type_to_level_mapping(structure_data)
+    
+    # Step 5: Extract headers from each page
     all_headers = []
     
     for page in document.pages:
@@ -302,6 +378,7 @@ async def extract_structure(document: ProcessedDocument) -> None:
                 page.img_base64,
                 page.page_number,
                 extraction_prompt,
+                element_type_to_level_mapping,
                 page.ocr_markdown
             )
             all_headers.extend(page_headers)
@@ -310,7 +387,23 @@ async def extract_structure(document: ProcessedDocument) -> None:
             logger.error(f"Header extraction failed for page {page.page_number}: {e}")
             raise RuntimeError(f"Header extraction failed for page {page.page_number}: {e}") from e
     
-    # Step 5: Update document with extracted headers
+    # Step 6: Write extracted headers to debug output
+    headers_debug_data = {
+        "total_headers": len(all_headers),
+        "headers": [
+            {
+                "text": header.text,
+                "level": header.level,
+                "page_number": header.page_number,
+                "element_type": header.element_type,
+                "markdown_line_number": header.markdown_line_number
+            }
+            for header in all_headers
+        ]
+    }
+    _write_debug_output(headers_debug_data, "structure_extractor_headers.json")
+    
+    # Step 7: Update document with extracted headers
     document.headers = all_headers
     
     logger.info(f"Successfully extracted {len(all_headers)} headers from {len(document.pages)} pages")

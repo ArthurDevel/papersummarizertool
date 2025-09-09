@@ -1,7 +1,8 @@
 import logging
 import base64
 import io
-from typing import Optional
+import time
+from typing import Optional, Dict, Any, List
 
 from paperprocessor_v2.models import ProcessedDocument, ProcessedPage
 from paperprocessor_v2.internals.pdf_to_image import convert_pdf_to_images
@@ -14,7 +15,7 @@ from paperprocessor_v2.internals.section_rewriter import rewrite_sections
 logger = logging.getLogger(__name__)
 
 
-    async def process_paper_pdf(pdf_contents: bytes, paper_id: Optional[str] = None) -> ProcessedDocument:
+async def process_paper_pdf(pdf_contents: bytes, paper_id: Optional[str] = None) -> ProcessedDocument:
         """
         5-step pipeline:
         1. OCR → markdown per page
@@ -74,3 +75,60 @@ logger = logging.getLogger(__name__)
         
         logger.info("Paper processing pipeline v2 finished.")
         return document
+
+
+async def process_paper_pdf_legacy(pdf_contents: bytes, paper_id: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Legacy-shaped adapter for callers expecting the v1 dict structure.
+        Keeps v2 as-is and maps its DTO to the expected fields.
+        """
+        _t0 = time.perf_counter()
+
+        # Run v2 processing
+        doc: ProcessedDocument = await process_paper_pdf(pdf_contents, paper_id)
+
+        # Helper to build data URL for a base64-encoded PNG
+        def _as_data_url_png(b64: str) -> str:
+            return f"data:image/png;base64,{b64}"
+
+        # Pages list in legacy format
+        pages: List[Dict[str, Any]] = []
+        for idx, page in enumerate(doc.pages):
+            pages.append({
+                "page_number": idx + 1,
+                "image_data_url": _as_data_url_png(page.img_base64),
+            })
+
+        # Thumbnail: use full first page image as a simple thumbnail
+        thumbnail_data_url: Optional[str] = None
+        if doc.pages:
+            thumbnail_data_url = _as_data_url_png(doc.pages[0].img_base64)
+
+        # Sections: flat list of rewritten contents
+        sections: List[Dict[str, Any]] = []
+        for s in doc.sections:
+            sections.append({
+                "rewritten_content": s.rewritten_content,
+            })
+
+        # Metrics
+        processing_time_seconds = max(0.0, time.perf_counter() - _t0)
+        num_pages = len(doc.pages)
+
+        result: Dict[str, Any] = {
+            "paper_id": paper_id or "temp_id",
+            "title": doc.title,
+            "authors": doc.authors,
+            "thumbnail_data_url": thumbnail_data_url,
+            "sections": sections,
+            "tables": [],
+            "figures": [],
+            "pages": pages,
+            "usage_summary": {},
+            "processing_time_seconds": processing_time_seconds,
+            "num_pages": num_pages,
+            "total_cost": None,
+            "avg_cost_per_page": None,
+        }
+
+        return result

@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from shared.db import SessionLocal
 from papers.models import PaperRow, PaperSlugRow
 from shared.arxiv.client import fetch_pdf_for_processing
-from paperprocessor.client import process_paper_pdf, build_paper_slug, store_processed_result
+from paperprocessor_v2.client import process_paper_pdf_legacy
 from users.client import set_requests_processed
 
 
@@ -38,10 +38,10 @@ async def _process_one(job: PaperRow) -> None:
     logger.info("Processing job id=%s paper_uuid=%s arxiv=%s", job.id, job.paper_uuid, job.arxiv_id)
     try:
         pdf = await fetch_pdf_for_processing(job.arxiv_url or job.arxiv_id)
-        result = await process_paper_pdf(pdf.pdf_bytes, paper_id=job.paper_uuid, arxiv_id_or_url=(job.arxiv_url or job.arxiv_id))
+        result = await process_paper_pdf_legacy(pdf.pdf_bytes, paper_id=job.paper_uuid)
 
-        # Persist processed result via processor helper
-        store_processed_result(job.paper_uuid, result)
+        # Persist processed result JSON (avoid v1 import)
+        _store_processed_result(job.paper_uuid, result)
 
         # Read metrics directly from result (computed by processor)
         num_pages = result.get('num_pages')
@@ -78,7 +78,7 @@ async def _process_one(job: PaperRow) -> None:
                 if existing_for_paper:
                     slug = existing_for_paper.slug
                 else:
-                    slug = build_paper_slug(j.title, j.authors)
+                    slug = _build_paper_slug(j.title, j.authors)
                     exists = s.query(PaperSlugRow).filter(PaperSlugRow.slug == slug).first()
                     if exists:
                         # If slug already maps to this paper, reuse; otherwise it's a true collision
@@ -157,5 +157,46 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# --- Local helpers (remove v1 dependency) ---
+def _get_processed_result_path(paper_uuid: str) -> str:
+    base_dir = os.path.abspath(os.environ.get("PAPER_JSON_DIR", os.path.join(os.getcwd(), 'data', 'paperjsons')))
+    return os.path.join(base_dir, f"{paper_uuid}.json")
+
+
+def _store_processed_result(paper_uuid: str, result: dict) -> str:
+    target_path = _get_processed_result_path(paper_uuid)
+    os.makedirs(os.path.dirname(target_path), exist_ok=True)
+    tmp_path = f"{target_path}.tmp"
+    import json as _json
+    with open(tmp_path, 'w', encoding='utf-8') as f:
+        _json.dump(result, f, ensure_ascii=False)
+    os.replace(tmp_path, target_path)
+    return target_path
+
+
+def _build_paper_slug(title: str | None, authors: str | None) -> str:
+    if not title or not authors:
+        raise ValueError("Cannot generate slug without title and authors")
+    try:
+        import unicodedata
+        t = unicodedata.normalize('NFKD', title).encode('ascii', 'ignore').decode('ascii')
+        a = unicodedata.normalize('NFKD', authors).encode('ascii', 'ignore').decode('ascii')
+    except Exception:
+        t, a = title, authors
+    title_tokens = [tok for tok in (t or '').split() if tok][:12]
+    author_list = [s.strip() for s in (a or '').split(',') if s.strip()]
+    if not author_list:
+        raise ValueError("Cannot generate slug: no authors present")
+    def _last_name(full: str) -> str:
+        parts = full.split()
+        return parts[-1] if parts else full
+    use_authors = author_list[:2]
+    base = f"{' '.join(title_tokens) if title_tokens else t} {' '.join(_last_name(x) for x in use_authors)}".strip()
+    import re as _re
+    s = base.lower()
+    s = _re.sub(r"[^a-z0-9]+", "-", s)
+    s = _re.sub(r"-+", "-", s).strip('-')
+    return s[:120]
 
 

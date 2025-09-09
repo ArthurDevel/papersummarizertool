@@ -5,15 +5,17 @@ from datetime import datetime
 import asyncio
 import json
 import re
+import os
+from dotenv import load_dotenv
 
 from shared.config import settings
 from shared.openrouter.models import LLMCallResult, LLMJsonCallResult
 
 logger = logging.getLogger(__name__)
-
+load_dotenv()
 # Constants (keep it simple)
 #BASE_URL = "http://feedbackrouter:8000/v1"
-BASE_URL = "https://openrouter.ai/api/v1"
+BASE_URL = os.environ.get("OPENROUTER_BASE_URL","https://openrouter.ai/api/v1")
 TIMEOUT_SECONDS = 300
 
 # Module-level headers using configured API key

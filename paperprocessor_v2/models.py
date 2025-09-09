@@ -19,6 +19,7 @@ class Header:
     text: str                  # header text
     level: int                 # header level (1, 2, 3, etc.)
     page_number: int           # which page it appears on
+    element_type: str          # type of header (document_section, document_subsection, etc.)
     markdown_line_number: Optional[int] = None  # which line in the OCR markdown (0-based)
 
 
@@ -39,4 +40,24 @@ class ProcessedDocument:
     pages: List[ProcessedPage] = field(default_factory=list)
     headers: List[Header] = field(default_factory=list)       # Document headers
     final_markdown: Optional[str] = None    # Fully processed output
+    # Rewriting structure
+    # Sections are derived from final_markdown with <<section>> tags
+    # and hold rewritten content in a simple flat list in document order
+    # Section class is defined below
+    sections: List["Section"] = field(default_factory=list)
+    rewritten_final_markdown: Optional[str] = None
+
+
+@dataclass
+class Section:
+    """
+    Represents a document section detected from tagged markdown.
+
+    order_index: Position in document order starting at 0
+    original_content: Original markdown content for this section (between tags)
+    rewritten_content: Rewritten markdown content for this section
+    """
+    order_index: int
+    original_content: str
+    rewritten_content: Optional[str] = None
  

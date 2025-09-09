@@ -42,9 +42,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install Detectron2 separately
-RUN pip install --no-cache-dir 'git+https://github.com/facebookresearch/detectron2.git'
-
 # Pre-download and cache the layout model to a non-volume-mounted path in a single layer
 RUN mkdir -p /models && \
     wget -O /models/publaynet_config.yml "https://www.dropbox.com/s/f3b12qc4hc0yh4m/config.yml?dl=1" && \

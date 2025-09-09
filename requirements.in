@@ -1,7 +1,7 @@
 # General api dependencies
 fastapi==0.104.1
 uvicorn==0.34.2
-pydantic==2.5.2
+pydantic==2.27.2
 pydantic-settings==2.1.0
 pydantic_core==2.14.5
 SQLAlchemy==2.0.23
@@ -29,7 +29,7 @@ scipy==1.13.1
 
 # AI 
 openai==1.79.0
-mistralai
+mistralai==1.9.9
 
 # New database and vector store clients
 PyMySQL==1.1.0

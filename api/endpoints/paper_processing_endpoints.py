@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from api.types.paper_processing_api_models import Paper, JobStatusResponse, MinimalPaperItem
 from api.types.paper_processing_endpoints import JobDbStatus
-from paperprocessor.client import process_paper_pdf, get_processed_result_path, build_paper_slug
+from paperprocessor_v2.client import process_paper_pdf_legacy
 from shared.db import get_session
 from papers.models import PaperRow, PaperSlugRow
 from papers import client as papers_client
@@ -38,13 +38,43 @@ def require_admin(credentials: HTTPBasicCredentials = Depends(security)):
         )
     return True
 
+# --- Local helpers (remove v1 dependency) ---
+def get_processed_result_path(paper_uuid: str) -> str:
+    base_dir = os.path.abspath(os.environ.get("PAPER_JSON_DIR", os.path.join(os.getcwd(), 'data', 'paperjsons')))
+    return os.path.join(base_dir, f"{paper_uuid}.json")
+
+
+def build_paper_slug(title: Optional[str], authors: Optional[str]) -> str:
+    if not title or not authors:
+        raise HTTPException(status_code=400, detail="Cannot generate slug without title and authors")
+    try:
+        import unicodedata
+        t = unicodedata.normalize('NFKD', title).encode('ascii', 'ignore').decode('ascii')
+        a = unicodedata.normalize('NFKD', authors).encode('ascii', 'ignore').decode('ascii')
+    except Exception:
+        t, a = title, authors
+    title_tokens = [tok for tok in (t or '').split() if tok][:12]
+    author_list = [s.strip() for s in (a or '').split(',') if s.strip()]
+    if not author_list:
+        raise HTTPException(status_code=400, detail="Cannot generate slug: no authors present")
+    def _last_name(full: str) -> str:
+        parts = full.split()
+        return parts[-1] if parts else full
+    use_authors = author_list[:2]
+    base = f"{' '.join(title_tokens) if title_tokens else t} {' '.join(_last_name(x) for x in use_authors)}".strip()
+    import re as _re
+    s = base.lower()
+    s = _re.sub(r"[^a-z0-9]+", "-", s)
+    s = _re.sub(r"-+", "-", s).strip('-')
+    return s[:120]
+
 async def process_paper_in_background(job_id: str, contents: bytes):
     """
     A wrapper function to run the PDF processing in the background
     and update the job status upon completion or failure.
     """
     try:
-        result = await process_paper_pdf(contents)
+        result = await process_paper_pdf_legacy(contents)
         update_job_status(job_id, "completed", result)
         logger.info(f"Job {job_id} completed successfully.")
     except Exception as e:
