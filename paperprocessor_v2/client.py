@@ -4,7 +4,7 @@ import io
 import time
 from typing import Optional, Dict, Any, List
 
-from paperprocessor_v2.models import ProcessedDocument, ProcessedPage
+from paperprocessor_v2.models import ProcessedDocument, ProcessedPage, ApiCallCostForStep
 from paperprocessor_v2.internals.pdf_to_image import convert_pdf_to_images
 from paperprocessor_v2.internals.mistral_ocr import extract_markdown_from_pages
 from paperprocessor_v2.internals.metadata_extractor import extract_metadata
@@ -13,6 +13,65 @@ from paperprocessor_v2.internals.header_formatter import format_headers
 from paperprocessor_v2.internals.section_rewriter import rewrite_sections
 
 logger = logging.getLogger(__name__)
+
+
+### HELPER FUNCTIONS ###
+def _calculate_usage_summary(step_costs: List[ApiCallCostForStep]) -> Dict[str, Any]:
+    """
+    Aggregate ApiCallCostForStep objects into UsageSummary format.
+    Business logic for cost aggregation - belongs in client.py, not models.py.
+    """
+    if not step_costs:
+        return {}
+    
+    total_cost = 0.0
+    total_prompt_tokens = 0
+    total_completion_tokens = 0
+    total_tokens = 0
+    by_model: Dict[str, Dict[str, Any]] = {}
+    
+    for step_cost in step_costs:
+        cost = step_cost.cost_info
+        
+        # Aggregate totals
+        if cost.total_cost:
+            total_cost += cost.total_cost
+        if cost.prompt_tokens:
+            total_prompt_tokens += cost.prompt_tokens
+        if cost.completion_tokens:
+            total_completion_tokens += cost.completion_tokens
+        if cost.total_tokens:
+            total_tokens += cost.total_tokens
+            
+        # Aggregate by model
+        model = step_cost.model
+        if model not in by_model:
+            by_model[model] = {
+                "num_calls": 0,
+                "total_cost": 0.0,
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "total_tokens": 0
+            }
+        
+        by_model[model]["num_calls"] += 1
+        if cost.total_cost:
+            by_model[model]["total_cost"] += cost.total_cost
+        if cost.prompt_tokens:
+            by_model[model]["prompt_tokens"] += cost.prompt_tokens
+        if cost.completion_tokens:
+            by_model[model]["completion_tokens"] += cost.completion_tokens
+        if cost.total_tokens:
+            by_model[model]["total_tokens"] += cost.total_tokens
+    
+    return {
+        "currency": "USD",
+        "total_cost": total_cost if total_cost > 0 else None,
+        "total_prompt_tokens": total_prompt_tokens if total_prompt_tokens > 0 else None,
+        "total_completion_tokens": total_completion_tokens if total_completion_tokens > 0 else None,
+        "total_tokens": total_tokens if total_tokens > 0 else None,
+        "by_model": by_model
+    }
 
 
 async def process_paper_pdf(pdf_contents: bytes, paper_id: Optional[str] = None) -> ProcessedDocument:
@@ -114,6 +173,11 @@ async def process_paper_pdf_legacy(pdf_contents: bytes, paper_id: Optional[str] 
         # Metrics
         processing_time_seconds = max(0.0, time.perf_counter() - _t0)
         num_pages = len(doc.pages)
+        
+        # Calculate usage summary from collected step costs
+        usage_summary = _calculate_usage_summary(doc.step_costs)
+        total_cost = usage_summary.get("total_cost")
+        avg_cost_per_page = (total_cost / num_pages) if total_cost and num_pages > 0 else None
 
         result: Dict[str, Any] = {
             "paper_id": paper_id or "temp_id",
@@ -124,11 +188,11 @@ async def process_paper_pdf_legacy(pdf_contents: bytes, paper_id: Optional[str] 
             "tables": [],
             "figures": [],
             "pages": pages,
-            "usage_summary": {},
+            "usage_summary": usage_summary,
             "processing_time_seconds": processing_time_seconds,
             "num_pages": num_pages,
-            "total_cost": None,
-            "avg_cost_per_page": None,
+            "total_cost": total_cost,
+            "avg_cost_per_page": avg_cost_per_page,
         }
 
         return result

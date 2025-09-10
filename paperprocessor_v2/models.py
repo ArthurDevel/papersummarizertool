@@ -2,6 +2,8 @@ from dataclasses import dataclass, field
 from typing import List, Optional
 import uuid
 
+from shared.openrouter.models import ApiCallCost
+
 
 @dataclass
 class ProcessedImage:
@@ -33,6 +35,14 @@ class ProcessedPage:
 
 
 @dataclass
+class ApiCallCostForStep:
+    """Application-level wrapper that adds step context to pure cost info."""
+    step_name: str
+    model: str                        # Model used for this step
+    cost_info: ApiCallCost
+
+
+@dataclass
 class ProcessedDocument:
     pdf_base64: str            # base64 encoded version of the pdf
     title: Optional[str] = None
@@ -46,6 +56,8 @@ class ProcessedDocument:
     # Section class is defined below
     sections: List["Section"] = field(default_factory=list)
     rewritten_final_markdown: Optional[str] = None
+    # Cost tracking
+    step_costs: List[ApiCallCostForStep] = field(default_factory=list)
 
 
 @dataclass

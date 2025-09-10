@@ -9,7 +9,7 @@ import os
 from dotenv import load_dotenv
 
 from shared.config import settings
-from shared.openrouter.models import LLMCallResult, LLMJsonCallResult
+from shared.openrouter.models import LLMCallResult, LLMJsonCallResult, ApiCallCost
 
 logger = logging.getLogger(__name__)
 load_dotenv()
@@ -99,6 +99,8 @@ async def get_llm_response(messages: List[Dict[str, Any]], model: str) -> LLMCal
     Gets a response from a specified LLM on OpenRouter with a given prompt.
     Supports both text-only and multimodal messages.
     """
+    start_time = datetime.utcnow()
+    
     json_payload = {
         "model": model,
         "messages": messages
@@ -122,15 +124,22 @@ async def get_llm_response(messages: List[Dict[str, Any]], model: str) -> LLMCal
                 except Exception as ce:
                     logger.error(f"Failed to retrieve cost for generation {generation_id}: {ce}")
 
-            return LLMCallResult(
-                model=model,
-                generation_id=generation_id,
-                start_time=datetime.utcnow(),
-                end_time=datetime.utcnow(),
+            end_time = datetime.utcnow()
+            
+            # Create cost info object (pure cost data only) (pure cost data only)
+            cost_info = ApiCallCost(
                 prompt_tokens=usage.get("prompt_tokens"),
                 completion_tokens=usage.get("completion_tokens"),
                 total_tokens=usage.get("total_tokens"),
-                total_cost=total_cost,
+                total_cost=total_cost
+            )
+
+            return LLMCallResult(
+                model=model,
+                generation_id=generation_id,
+                start_time=start_time,
+                end_time=end_time,
+                cost_info=cost_info,
                 response_text=response_text,
                 response_message=first_message,
                 raw_response=data,
@@ -145,6 +154,8 @@ async def get_multimodal_json_response(system_prompt: str, user_prompt_parts: Li
     """
     Gets a structured JSON response from a specified multimodal LLM on OpenRouter.
     """
+    start_time = datetime.utcnow()
+    
     messages = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_prompt_parts},
@@ -214,15 +225,22 @@ async def get_multimodal_json_response(system_prompt: str, user_prompt_parts: Li
                 except Exception as ce:
                     logger.error(f"Failed to retrieve cost for generation {generation_id}: {ce}")
 
-            return LLMJsonCallResult(
-                model=model,
-                generation_id=generation_id,
-                start_time=datetime.utcnow(),
-                end_time=datetime.utcnow(),
+            end_time = datetime.utcnow()
+            
+            # Create cost info object (pure cost data only)
+            cost_info = ApiCallCost(
                 prompt_tokens=usage.get("prompt_tokens"),
                 completion_tokens=usage.get("completion_tokens"),
                 total_tokens=usage.get("total_tokens"),
-                total_cost=total_cost,
+                total_cost=total_cost
+            )
+
+            return LLMJsonCallResult(
+                model=model,
+                generation_id=generation_id,
+                start_time=start_time,
+                end_time=end_time,
+                cost_info=cost_info,
                 response_text=response_text,
                 response_message=first_message,
                 raw_response=data,
@@ -242,6 +260,8 @@ async def get_json_response(system_prompt: str, user_prompt: str, model: str) ->
     """
     Gets a structured JSON response from a specified LLM on OpenRouter.
     """
+    start_time = datetime.utcnow()
+    
     messages = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_prompt},
@@ -311,15 +331,22 @@ async def get_json_response(system_prompt: str, user_prompt: str, model: str) ->
                 except Exception as ce:
                     logger.error(f"Failed to retrieve cost for generation {generation_id}: {ce}")
 
-            return LLMJsonCallResult(
-                model=model,
-                generation_id=generation_id,
-                start_time=datetime.utcnow(),
-                end_time=datetime.utcnow(),
+            end_time = datetime.utcnow()
+            
+            # Create cost info object (pure cost data only)
+            cost_info = ApiCallCost(
                 prompt_tokens=usage.get("prompt_tokens"),
                 completion_tokens=usage.get("completion_tokens"),
                 total_tokens=usage.get("total_tokens"),
-                total_cost=total_cost,
+                total_cost=total_cost
+            )
+
+            return LLMJsonCallResult(
+                model=model,
+                generation_id=generation_id,
+                start_time=start_time,
+                end_time=end_time,
+                cost_info=cost_info,
                 response_text=response_text,
                 response_message=first_message,
                 raw_response=data,
@@ -333,15 +360,19 @@ async def get_json_response(system_prompt: str, user_prompt: str, model: str) ->
         except (KeyError, IndexError) as e:
             logger.error(f"Error parsing JSON from OpenRouter response structure: {e}")
             # Continue with empty parsed JSON
-            return LLMJsonCallResult(
-                model=model,
-                generation_id=None,
-                start_time=datetime.utcnow(),
-                end_time=datetime.utcnow(),
+            fallback_end_time = datetime.utcnow()
+            fallback_cost_info = ApiCallCost(
                 prompt_tokens=None,
                 completion_tokens=None,
                 total_tokens=None,
-                total_cost=None,
+                total_cost=None
+            )
+            return LLMJsonCallResult(
+                model=model,
+                generation_id=None,
+                start_time=start_time,
+                end_time=fallback_end_time,
+                cost_info=fallback_cost_info,
                 response_text=None,
                 response_message=None,
                 raw_response={},

@@ -1,10 +1,21 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional, Dict, Any, Literal
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
+
+
+@dataclass
+class ApiCallCost:
+    """Pure cost and usage information for an API call."""
+    prompt_tokens: Optional[int]
+    completion_tokens: Optional[int]
+    total_tokens: Optional[int]
+    total_cost: Optional[float]
+    currency: str = "USD"
 
 
 class LLMCallResult(BaseModel):
@@ -20,7 +31,6 @@ class LLMCallResult(BaseModel):
     model: str = Field(..., description="Model identifier used for the call")
     provider: Literal["openrouter"] = Field(default="openrouter", description="LLM provider name")
     generation_id: Optional[str] = Field(default=None, description="Provider's generation ID")
-    step_name: Optional[str] = Field(default=None, description="Optional step label")
     workflow_uuid: Optional[UUID] = Field(default=None, description="Workflow definition identifier")
     workflow_instance_uuid: Optional[UUID] = Field(default=None, description="Workflow instance identifier")
 
@@ -28,12 +38,8 @@ class LLMCallResult(BaseModel):
     start_time: datetime = Field(default_factory=datetime.utcnow, description="UTC timestamp when call started")
     end_time: Optional[datetime] = Field(default=None, description="UTC timestamp when call finished")
 
-    # Metering and cost
-    prompt_tokens: Optional[int] = Field(default=None)
-    completion_tokens: Optional[int] = Field(default=None)
-    total_tokens: Optional[int] = Field(default=None)
-    total_cost: Optional[float] = Field(default=None, description="USD cost of call")
-    currency: Literal["USD"] = Field(default="USD")
+    # Cost information (pure cost data only)
+    cost_info: ApiCallCost
 
     # Payloads
     response_text: Optional[str] = Field(default=None, description="First message content if present")

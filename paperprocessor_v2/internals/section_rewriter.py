@@ -6,7 +6,7 @@ import json
 from typing import List, Tuple
 
 from shared.openrouter import client as openrouter_client
-from paperprocessor_v2.models import ProcessedDocument, Section
+from paperprocessor_v2.models import ProcessedDocument, Section, ApiCallCostForStep
 
 logger = logging.getLogger(__name__)
 
@@ -140,9 +140,9 @@ def _rewrite_section_text(section_text: str) -> str:
     raise NotImplementedError("_rewrite_section_text must be awaited via async wrapper")
 
 
-async def _rewrite_section_text_async(section_text: str) -> str:
+async def _rewrite_section_text_async(section_text: str, section_index: int) -> Tuple[str, ApiCallCostForStep]:
     """
-    Async wrapper to call the LLM and return response text.
+    Async wrapper to call the LLM and return response text and cost info.
     """
     prompt = _load_rewrite_prompt()
     result = await openrouter_client.get_llm_response(
@@ -152,10 +152,18 @@ async def _rewrite_section_text_async(section_text: str) -> str:
         ],
         model=REWRITE_MODEL,
     )
+    
+    # Create cost tracking record
+    step_cost = ApiCallCostForStep(
+        step_name=f"rewrite_section_{section_index}",
+        model=result.model,
+        cost_info=result.cost_info
+    )
+    
     text = getattr(result, "response_text", None)
     if not text:
         raise RuntimeError("Rewrite failed: empty response text")
-    return str(text)
+    return str(text), step_cost
 
 
 def _flatten_sections_in_document_order(nodes: List[Section]) -> List[Section]:
@@ -200,8 +208,8 @@ async def rewrite_sections(document: ProcessedDocument) -> None:
     # 3) Rewrite each section in parallel
     # 3a) Create tasks for all sections
     rewrite_tasks = []
-    for section in sections:
-        task = _rewrite_section_text_async(section.original_content)
+    for i, section in enumerate(sections):
+        task = _rewrite_section_text_async(section.original_content, i)
         rewrite_tasks.append(task)
     
     # 3b) Execute all section rewrites in parallel (maintains section order)
@@ -211,9 +219,10 @@ async def rewrite_sections(document: ProcessedDocument) -> None:
         logger.error(f"Section rewriting failed during parallel processing: {e}")
         raise RuntimeError(f"Section rewriting failed during parallel processing: {e}") from e
     
-    # 3c) Assign rewritten content back to sections in order
-    for section, rewritten_content in zip(sections, rewritten_results):
+    # 3c) Assign rewritten content back to sections and collect cost info
+    for section, (rewritten_content, step_cost) in zip(sections, rewritten_results):
         section.rewritten_content = rewritten_content
+        document.step_costs.append(step_cost)
 
     # 4) Persist on document
     document.sections = sections

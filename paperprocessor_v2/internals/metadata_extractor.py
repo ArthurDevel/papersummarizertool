@@ -3,7 +3,7 @@ import os
 from typing import Dict, Any, List
 
 from shared.openrouter import client as openrouter_client
-from paperprocessor_v2.models import ProcessedDocument
+from paperprocessor_v2.models import ProcessedDocument, ApiCallCostForStep
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +92,15 @@ async def extract_metadata(document: ProcessedDocument) -> None:
             model=MODEL
         )
         
-        # Step 5: Parse response and update document
+        # Step 5: Track cost for this API call
+        step_cost = ApiCallCostForStep(
+            step_name="extract_metadata",
+            model=response.model,
+            cost_info=response.cost_info
+        )
+        document.step_costs.append(step_cost)
+        
+        # Step 6: Parse response and update document
         metadata = response.parsed_json
         
         document.title = metadata.get("title")
