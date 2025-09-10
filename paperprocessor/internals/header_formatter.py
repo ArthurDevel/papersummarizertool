@@ -95,15 +95,15 @@ def _add_section_tags_to_page_markdown(original_markdown: str, page_headers: Lis
 
 def _format_page_markdown(original_markdown: str, page_headers: List[Header]) -> str:
     """
-    Format markdown by replacing header lines with properly formatted versions.
-    (KEPT FOR FUTURE USE - currently not called)
+    Format markdown by adjusting header levels for lines that already start with # and are confirmed headers.
+    Only modifies lines that OCR detected as headers (start with #) AND are in our headers list.
     
     Args:
         original_markdown: Original OCR markdown content
         page_headers: Headers found on this page
         
     Returns:
-        Markdown with properly formatted headers
+        Markdown with properly formatted header levels
     """
     if not original_markdown or not page_headers:
         return original_markdown or ""
@@ -117,24 +117,32 @@ def _format_page_markdown(original_markdown: str, page_headers: List[Header]) ->
         if header.markdown_line_number is not None:
             headers_by_line[header.markdown_line_number] = header
     
-    # Replace header lines with formatted versions
+    # Replace header lines with formatted versions - but only if line already starts with #
     for line_number, header in headers_by_line.items():
         if 0 <= line_number < len(lines):
-            formatted_line = _format_header_line(header)
-            lines[line_number] = formatted_line
-            logger.debug(f"Formatted header on line {line_number}: '{header.text}' -> '{formatted_line}'")
+            current_line = lines[line_number].strip()
+            # Only format if line already starts with # (OCR detected it as header)
+            if current_line.startswith('#'):
+                formatted_line = _format_header_line(header)
+                lines[line_number] = formatted_line
+                logger.debug(f"Formatted header on line {line_number}: '{header.text}' -> '{formatted_line}'")
     
     return '\n'.join(lines)
 
 
 async def format_headers(document: ProcessedDocument) -> None:
     """
-    Step 4: Add section tags to document markdown.
-    Inserts <<section>> tags before all document_section and document_section_references headers.
-    Creates document.final_markdown by combining all pages.
+    Step 4: Format header levels and add section tags to document markdown.
+    
+    Process:
+    1. Formats header levels (# count) for lines that already start with # and are confirmed headers
+    2. Inserts <<section>> tags before document_section and document_section_references headers
+    3. Creates document.final_markdown by combining all processed pages
+    
+    Only modifies header lines that OCR detected as headers (start with #) AND are in our headers list.
     Preserves original OCR markdown in pages.
     """
-    logger.info("Adding section tags to document...")
+    logger.info("Formatting headers and adding section tags to document...")
     
     if not document.headers:
         logger.info("No headers found in document, creating final_markdown from OCR content")
@@ -163,9 +171,12 @@ async def format_headers(document: ProcessedDocument) -> None:
         # Step 2: Get headers for this page
         page_headers = _get_page_headers(document.headers, page.page_number)
         
-        # Step 3: Add section tags to page markdown
-        page_markdown_with_tags = _add_section_tags_to_page_markdown(page.ocr_markdown, page_headers)
-        page_markdowns.append(page_markdown_with_tags)
+        # Step 3: Format header levels for lines that already start with #
+        page_markdown_formatted = _format_page_markdown(page.ocr_markdown, page_headers)
+        
+        # Step 4: Add section tags to page markdown
+        page_markdown_final = _add_section_tags_to_page_markdown(page_markdown_formatted, page_headers)
+        page_markdowns.append(page_markdown_final)
         
         # Count section headers on this page
         section_headers = [h for h in page_headers if h.element_type in ['document_section', 'document_section_references'] and h.markdown_line_number is not None]
@@ -176,19 +187,19 @@ async def format_headers(document: ProcessedDocument) -> None:
         else:
             logger.debug(f"Page {page.page_number}: no section headers found")
     
-    # Step 4: Combine all pages into final_markdown
+    # Step 5: Combine all pages into final_markdown
     document.final_markdown = '\n\n'.join(page_markdowns)
     
-    # Step 4a: Write final markdown to debug output
+    # Step 6: Write final markdown to debug output
     if document.final_markdown:
         _write_debug_output(document.final_markdown, "header_formatter_final_markdown.md")
     
-    # Step 5: Log summary
+    # Step 7: Log summary
     total_section_headers = [h for h in document.headers if h.element_type in ['document_section', 'document_section_references']]
     section_headers_with_line_numbers = [h for h in total_section_headers if h.markdown_line_number is not None]
     section_headers_without_line_numbers = [h for h in total_section_headers if h.markdown_line_number is None]
     
-    logger.info(f"Section tagging completed: {total_section_tags_added} section tags added, {len(section_headers_without_line_numbers)} section headers without line numbers")
+    logger.info(f"Header processing completed: {total_section_tags_added} section tags added, {len(section_headers_without_line_numbers)} section headers without line numbers")
     
     if section_headers_without_line_numbers:
         logger.warning(f"Section headers without line numbers: {[h.text for h in section_headers_without_line_numbers]}")
