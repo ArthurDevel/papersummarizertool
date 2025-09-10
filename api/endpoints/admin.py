@@ -15,7 +15,8 @@ from api.types.admin import (
     RestartPaperRequest,
     ImportResult,
 )
-from paperprocessor.client import get_processing_metrics_for_admin, build_paper_slug
+from paperprocessor.client import get_processing_metrics_for_admin
+from papers.client import build_paper_slug
 from papers.models import PaperRow, PaperSlugRow
 from shared.arxiv.client import normalize_id, fetch_metadata, download_pdf
 from shared.db import get_session

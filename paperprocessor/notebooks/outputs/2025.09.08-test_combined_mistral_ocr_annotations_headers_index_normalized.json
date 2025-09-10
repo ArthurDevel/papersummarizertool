@@ -1,0 +1,226 @@
+[
+  {
+    "ocr_title": "Abstract",
+    "ocr_level": 1,
+    "markdown_page_index": 0,
+    "markdown_line": 6,
+    "markdown_title": "Abstract",
+    "score": 100
+  },
+  {
+    "ocr_title": "1. Introduction",
+    "ocr_level": 1,
+    "markdown_page_index": 0,
+    "markdown_line": 11,
+    "markdown_title": "1. Introduction",
+    "score": 100
+  },
+  {
+    "ocr_title": "2. Demonstrate–Search–Predict",
+    "ocr_level": 1,
+    "markdown_page_index": 2,
+    "markdown_line": 1,
+    "markdown_title": "2. DEMONSTRATE-SEARCH-PREDICT",
+    "score": 93
+  },
+  {
+    "ocr_title": "2.1. Pretrained Modules: LM and RM",
+    "ocr_level": 2,
+    "markdown_page_index": 2,
+    "markdown_line": 5,
+    "markdown_title": "2.1. Pretrained Modules: LM and RM",
+    "score": 100
+  },
+  {
+    "ocr_title": "2.2. Datatypes and Control Flow",
+    "ocr_level": 2,
+    "markdown_page_index": 2,
+    "markdown_line": 19,
+    "markdown_title": "2.2. Datatypes and Control Flow",
+    "score": 100
+  },
+  {
+    "ocr_title": "2.3. Demonstrate",
+    "ocr_level": 2,
+    "markdown_page_index": 3,
+    "markdown_line": 7,
+    "markdown_title": "2.3. DEMONSTRATE",
+    "score": 100
+  },
+  {
+    "ocr_title": "2.4. Search",
+    "ocr_level": 2,
+    "markdown_page_index": 4,
+    "markdown_line": 25,
+    "markdown_title": "2.4. SEARCH",
+    "score": 100
+  },
+  {
+    "ocr_title": "2.5. Predict",
+    "ocr_level": 2,
+    "markdown_page_index": 6,
+    "markdown_line": 21,
+    "markdown_title": "2.5. PrediCt",
+    "score": 100
+  },
+  {
+    "ocr_title": "3. Evaluation",
+    "ocr_level": 1,
+    "markdown_page_index": 7,
+    "markdown_line": 35,
+    "markdown_title": "3. Evaluation",
+    "score": 100
+  },
+  {
+    "ocr_title": "3.1. Evaluation Methodology",
+    "ocr_level": 2,
+    "markdown_page_index": 7,
+    "markdown_line": 41,
+    "markdown_title": "3.1. Evaluation Methodology",
+    "score": 100
+  },
+  {
+    "ocr_title": "1. Introduction",
+    "ocr_level": 1,
+    "markdown_page_index": 0,
+    "markdown_line": 11,
+    "markdown_title": "1. Introduction",
+    "score": 100
+  },
+  {
+    "ocr_title": "1.1 Background",
+    "ocr_level": 2,
+    "markdown_page_index": null,
+    "markdown_line": null,
+    "markdown_title": null,
+    "score": 48
+  },
+  {
+    "ocr_title": "1.2 Objectives",
+    "ocr_level": 2,
+    "markdown_page_index": null,
+    "markdown_line": null,
+    "markdown_title": null,
+    "score": 50
+  },
+  {
+    "ocr_title": "2. Background",
+    "ocr_level": 1,
+    "markdown_page_index": null,
+    "markdown_line": null,
+    "markdown_title": null,
+    "score": 46
+  },
+  {
+    "ocr_title": "2.1 Literature Review",
+    "ocr_level": 2,
+    "markdown_page_index": null,
+    "markdown_line": null,
+    "markdown_title": null,
+    "score": 45
+  },
+  {
+    "ocr_title": "2.2 Theoretical Framework",
+    "ocr_level": 2,
+    "markdown_page_index": null,
+    "markdown_line": null,
+    "markdown_title": null,
+    "score": 44
+  },
+  {
+    "ocr_title": "3. Methodology",
+    "ocr_level": 1,
+    "markdown_page_index": 7,
+    "markdown_line": 41,
+    "markdown_title": "3.1. Evaluation Methodology",
+    "score": 88
+  },
+  {
+    "ocr_title": "3.1 Data Collection",
+    "ocr_level": 2,
+    "markdown_page_index": null,
+    "markdown_line": null,
+    "markdown_title": null,
+    "score": 50
+  },
+  {
+    "ocr_title": "3.2 Data Analysis",
+    "ocr_level": 2,
+    "markdown_page_index": null,
+    "markdown_line": null,
+    "markdown_title": null,
+    "score": 46
+  },
+  {
+    "ocr_title": "4. Results",
+    "ocr_level": 1,
+    "markdown_page_index": null,
+    "markdown_line": null,
+    "markdown_title": null,
+    "score": 82
+  },
+  {
+    "ocr_title": "4.1 Quantitative Results",
+    "ocr_level": 2,
+    "markdown_page_index": null,
+    "markdown_line": null,
+    "markdown_title": null,
+    "score": 53
+  },
+  {
+    "ocr_title": "4.2 Qualitative Results",
+    "ocr_level": 2,
+    "markdown_page_index": null,
+    "markdown_line": null,
+    "markdown_title": null,
+    "score": 54
+  },
+  {
+    "ocr_title": "5. Discussion",
+    "ocr_level": 1,
+    "markdown_page_index": null,
+    "markdown_line": null,
+    "markdown_title": null,
+    "score": 61
+  },
+  {
+    "ocr_title": "5.1 Interpretation of Results",
+    "ocr_level": 2,
+    "markdown_page_index": null,
+    "markdown_line": null,
+    "markdown_title": null,
+    "score": 49
+  },
+  {
+    "ocr_title": "5.2 Implications",
+    "ocr_level": 2,
+    "markdown_page_index": null,
+    "markdown_line": null,
+    "markdown_title": null,
+    "score": 55
+  },
+  {
+    "ocr_title": "6. Conclusion",
+    "ocr_level": 1,
+    "markdown_page_index": 11,
+    "markdown_line": 1,
+    "markdown_title": "4. Conclusion",
+    "score": 92
+  },
+  {
+    "ocr_title": "6.1 Summary",
+    "ocr_level": 2,
+    "markdown_page_index": null,
+    "markdown_line": null,
+    "markdown_title": null,
+    "score": 45
+  },
+  {
+    "ocr_title": "6.2 Future Research",
+    "ocr_level": 2,
+    "markdown_page_index": null,
+    "markdown_line": null,
+    "markdown_title": null,
+    "score": 53
+  }
+]

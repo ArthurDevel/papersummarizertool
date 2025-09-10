@@ -4,7 +4,7 @@ import os
 from typing import Any, Dict
 
 from mistralai import Mistral
-from paperprocessor_v2.models import ProcessedDocument, ProcessedImage
+from paperprocessor.models import ProcessedDocument, ProcessedImage
 
 logger = logging.getLogger(__name__)
 

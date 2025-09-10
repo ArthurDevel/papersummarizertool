@@ -6,7 +6,7 @@ import re
 from typing import Dict, Any, List, Optional
 
 from shared.openrouter import client as openrouter_client
-from paperprocessor_v2.models import ProcessedDocument, Header
+from paperprocessor.models import ProcessedDocument, Header
 
 logger = logging.getLogger(__name__)
 

@@ -2,7 +2,7 @@ import logging
 import os
 from typing import Dict, List
 
-from paperprocessor_v2.models import ProcessedDocument, Header
+from paperprocessor.models import ProcessedDocument, Header
 
 logger = logging.getLogger(__name__)
 

@@ -1,0 +1,242 @@
+[
+  {
+    "page_index": 0,
+    "ocr_title": "Demonstrate–Search–Predict: Composing retrieval and language models for knowledge-intensive NLP",
+    "ocr_level": 1,
+    "markdown_line": 1,
+    "markdown_title": "DEMONSTRATE-SEARCH-PREDICT: Composing retrieval and language models for knowledge-intensive NLP",
+    "score": 97
+  },
+  {
+    "page_index": 0,
+    "ocr_title": "Abstract",
+    "ocr_level": 2,
+    "markdown_line": 6,
+    "markdown_title": "Abstract",
+    "score": 100
+  },
+  {
+    "page_index": 0,
+    "ocr_title": "1. Introduction",
+    "ocr_level": 2,
+    "markdown_line": 11,
+    "markdown_title": "1. Introduction",
+    "score": 100
+  },
+  {
+    "page_index": 2,
+    "ocr_title": "2. Demonstrate–Search–Predict",
+    "ocr_level": 2,
+    "markdown_line": 1,
+    "markdown_title": "2. DEMONSTRATE-SEARCH-PREDICT",
+    "score": 93
+  },
+  {
+    "page_index": 2,
+    "ocr_title": "2.1. Pretrained Modules: LM and RM",
+    "ocr_level": 3,
+    "markdown_line": 5,
+    "markdown_title": "2.1. Pretrained Modules: LM and RM",
+    "score": 100
+  },
+  {
+    "page_index": null,
+    "ocr_title": "Language Model",
+    "ocr_level": 4,
+    "markdown_line": null,
+    "markdown_title": null,
+    "score": 72
+  },
+  {
+    "page_index": null,
+    "ocr_title": "Retrieval Model",
+    "ocr_level": 4,
+    "markdown_line": null,
+    "markdown_title": null,
+    "score": 75
+  },
+  {
+    "page_index": 2,
+    "ocr_title": "2.2. Datatypes and Control Flow",
+    "ocr_level": 3,
+    "markdown_line": 19,
+    "markdown_title": "2.2. Datatypes and Control Flow",
+    "score": 100
+  },
+  {
+    "page_index": null,
+    "ocr_title": "The Example Datatype",
+    "ocr_level": 4,
+    "markdown_line": null,
+    "markdown_title": null,
+    "score": 40
+  },
+  {
+    "page_index": null,
+    "ocr_title": "A DSP Program",
+    "ocr_level": 4,
+    "markdown_line": null,
+    "markdown_title": null,
+    "score": 61
+  },
+  {
+    "page_index": 3,
+    "ocr_title": "2.3. Demonstrate",
+    "ocr_level": 3,
+    "markdown_line": 7,
+    "markdown_title": "2.3. DEMONSTRATE",
+    "score": 100
+  },
+  {
+    "page_index": null,
+    "ocr_title": "Bootstrapping Demonstrations",
+    "ocr_level": 4,
+    "markdown_line": null,
+    "markdown_title": null,
+    "score": 50
+  },
+  {
+    "page_index": null,
+    "ocr_title": "Selecting Demonstrations",
+    "ocr_level": 4,
+    "markdown_line": null,
+    "markdown_title": null,
+    "score": 56
+  },
+  {
+    "page_index": 4,
+    "ocr_title": "2.4. Search",
+    "ocr_level": 3,
+    "markdown_line": 25,
+    "markdown_title": "2.4. SEARCH",
+    "score": 100
+  },
+  {
+    "page_index": null,
+    "ocr_title": "Search Strategies",
+    "ocr_level": 4,
+    "markdown_line": null,
+    "markdown_title": null,
+    "score": 70
+  },
+  {
+    "page_index": 6,
+    "ocr_title": "2.5. Predict",
+    "ocr_level": 3,
+    "markdown_line": 21,
+    "markdown_title": "2.5. PrediCt",
+    "score": 100
+  },
+  {
+    "page_index": null,
+    "ocr_title": "Generating Candidates",
+    "ocr_level": 4,
+    "markdown_line": null,
+    "markdown_title": null,
+    "score": 43
+  },
+  {
+    "page_index": null,
+    "ocr_title": "Selecting Predictions",
+    "ocr_level": 4,
+    "markdown_line": null,
+    "markdown_title": null,
+    "score": 42
+  },
+  {
+    "page_index": 7,
+    "ocr_title": "3. Evaluation",
+    "ocr_level": 2,
+    "markdown_line": 35,
+    "markdown_title": "3. Evaluation",
+    "score": 100
+  },
+  {
+    "page_index": 7,
+    "ocr_title": "3.1. Evaluation Methodology",
+    "ocr_level": 3,
+    "markdown_line": 41,
+    "markdown_title": "3.1. Evaluation Methodology",
+    "score": 100
+  },
+  {
+    "page_index": 0,
+    "ocr_title": "Introduction",
+    "ocr_level": 1,
+    "markdown_line": 11,
+    "markdown_title": "1. Introduction",
+    "score": 100
+  },
+  {
+    "page_index": null,
+    "ocr_title": "Related Work",
+    "ocr_level": 1,
+    "markdown_line": null,
+    "markdown_title": null,
+    "score": 40
+  },
+  {
+    "page_index": 2,
+    "ocr_title": "Demonstrate-Search-Predict",
+    "ocr_level": 1,
+    "markdown_line": 1,
+    "markdown_title": "2. DEMONSTRATE-SEARCH-PREDICT",
+    "score": 100
+  },
+  {
+    "page_index": 8,
+    "ocr_title": "Pretrained Modules",
+    "ocr_level": 1,
+    "markdown_line": 5,
+    "markdown_title": "3.2. Pretrained Modules",
+    "score": 100
+  },
+  {
+    "page_index": 8,
+    "ocr_title": "Baselines",
+    "ocr_level": 1,
+    "markdown_line": 13,
+    "markdown_title": "3.3. Baselines",
+    "score": 100
+  },
+  {
+    "page_index": 8,
+    "ocr_title": "Proposed DSP Programs",
+    "ocr_level": 1,
+    "markdown_line": 38,
+    "markdown_title": "3.4. Proposed DSP Programs",
+    "score": 100
+  },
+  {
+    "page_index": 9,
+    "ocr_title": "Development Datasets & Results",
+    "ocr_level": 1,
+    "markdown_line": 58,
+    "markdown_title": "3.5. Development Datasets \\& Results",
+    "score": 96
+  },
+  {
+    "page_index": 11,
+    "ocr_title": "Conclusion",
+    "ocr_level": 1,
+    "markdown_line": 1,
+    "markdown_title": "4. Conclusion",
+    "score": 100
+  },
+  {
+    "page_index": 11,
+    "ocr_title": "Acknowledgements",
+    "ocr_level": 1,
+    "markdown_line": 9,
+    "markdown_title": "Acknowledgements",
+    "score": 100
+  },
+  {
+    "page_index": 11,
+    "ocr_title": "References",
+    "ocr_level": 1,
+    "markdown_line": 15,
+    "markdown_title": "References",
+    "score": 100
+  }
+]

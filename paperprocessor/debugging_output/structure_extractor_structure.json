@@ -1,0 +1,71 @@
+{
+  "document_type": "Computer Science Research Paper (arXiv preprint)",
+  "elements": [
+    {
+      "element_type": "header",
+      "level": 0,
+      "recognition_pattern": "Centered text at the top of the page, appearing on all pages except the first. The font is smaller than the document title.",
+      "examples": [
+        "DEMONSTRATE–SEARCH–PREDICT: Composing retrieval and language models"
+      ]
+    },
+    {
+      "element_type": "footnotes",
+      "level": 0,
+      "recognition_pattern": "Text located at the bottom-left of the first page, separated from the main content by a thin horizontal line. May be prefixed with a symbol like '*'.",
+      "examples": [
+        "*Stanford University. Correspondence to: Omar Khattab <okhattab@stanford.edu>.",
+        "Preprint."
+      ]
+    },
+    {
+      "element_type": "document_title",
+      "level": 1,
+      "recognition_pattern": "Large, bold, centered text at the top of the first page. It is the most prominent textual element on the page.",
+      "examples": [
+        "DEMONSTRATE–SEARCH–PREDICT: Composing retrieval and language models for knowledge-intensive NLP"
+      ]
+    },
+    {
+      "element_type": "document_section",
+      "level": 2,
+      "recognition_pattern": "A heading for a major part of the paper. It is bold, centered (for Abstract, Acknowledgements) or left-aligned (for numbered sections), and may be numbered with an integer followed by a period (e.g., '1. '). The text is typically in all-caps or title case.",
+      "examples": [
+        "Abstract",
+        "1. Introduction",
+        "4. Conclusion",
+        "Acknowledgements"
+      ]
+    },
+    {
+      "element_type": "document_section_references",
+      "level": 2,
+      "recognition_pattern": "The heading 'References', which is bold, left-aligned, and not numbered. It introduces the list of citations at the end of the paper.",
+      "examples": [
+        "References"
+      ]
+    },
+    {
+      "element_type": "document_subsection",
+      "level": 3,
+      "recognition_pattern": "A heading prefixed with a two-part number (e.g., '2.1. '). The text is bold and in title case.",
+      "examples": [
+        "2.1. Pretrained Models: LM and RM",
+        "2.2. Datatypes and Control Flow",
+        "3.2. Pretrained Modules"
+      ]
+    },
+    {
+      "element_type": "document_subsubsection",
+      "level": 4,
+      "recognition_pattern": "An unnumbered heading. The text is bold, italic, and in title case.",
+      "examples": [
+        "Language Model",
+        "Retrieval Model",
+        "The Example Datatype",
+        "Case Study"
+      ]
+    }
+  ],
+  "notes": "The paper uses a two-column layout. The first page includes a prominent vertical text block on the left with arXiv metadata ('arXiv:2212.14024v2...'). The authors and their affiliations are listed below the title but are not considered a structural heading. Sections 'Acknowledgements' and 'References' share formatting with numbered sections but are not numbered themselves. There are code blocks formatted with a monospaced font interspersed in the text."
+}

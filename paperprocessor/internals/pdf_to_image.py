@@ -1,10 +1,12 @@
 from typing import List
-import fitz  # PyMuPDF
 from PIL import Image
+import fitz  # PyMuPDF
 import io
+import asyncio
 import logging
 
 logger = logging.getLogger(__name__)
+
 
 def _resize_to_max(image: Image.Image, max_width: int, max_height: int) -> Image.Image:
     """
@@ -29,16 +31,19 @@ def _resize_to_max(image: Image.Image, max_width: int, max_height: int) -> Image
 
     return image.resize((new_width, new_height), resample=resample)
 
-def convert_pdf_to_images(pdf_bytes: bytes) -> List[Image.Image]:
+
+async def convert_pdf_to_images(pdf_bytes: bytes) -> List[Image.Image]:
     """
     Converts a PDF document into a list of PIL Image objects.
-
+    
     Args:
         pdf_bytes: The byte content of the PDF file.
 
     Returns:
         A list of PIL Image objects, one for each page of the PDF.
     """
+    logger.info("Converting PDF to images...")
+    
     try:
         pdf_document = fitz.open(stream=pdf_bytes, filetype="pdf")
         images = []
@@ -57,26 +62,17 @@ def convert_pdf_to_images(pdf_bytes: bytes) -> List[Image.Image]:
             orig_width, orig_height = image.size
             resized_image = _resize_to_max(image, max_width=1080, max_height=1920)
 
-            # Compute bytes for logging after potential resize
-            resized_buffer = io.BytesIO()
-            resized_image.save(resized_buffer, format="PNG")
-            resized_bytes = resized_buffer.getvalue()
-
             images.append(resized_image)
+            
             # Log page image details
-            try:
-                logger.info(
-                    (
-                        f"PDF->Image page {page_num + 1}: original={orig_width}x{orig_height} px, "
-                        f"orig_bytes={len(img_bytes)} (PNG), resized={resized_image.width}x{resized_image.height} px, "
-                        f"resized_bytes={len(resized_bytes)} (PNG), mode={resized_image.mode}, dpi=300"
-                    )
-                )
-            except Exception as e:
-                logger.warning(f"Could not log image details for page {page_num + 1}: {e}")
+            logger.info(
+                f"PDF->Image page {page_num + 1}: original={orig_width}x{orig_height} px, "
+                f"resized={resized_image.width}x{resized_image.height} px"
+            )
             
         logger.info(f"Successfully converted PDF with {len(images)} pages to images.")
         return images
+        
     except Exception as e:
         logger.error(f"Failed to convert PDF to images: {e}")
-        raise 
+        raise

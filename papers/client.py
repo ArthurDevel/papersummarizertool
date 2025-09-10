@@ -7,12 +7,64 @@ import hashlib
 import json as _json
 import os
 import re
+import unicodedata
 
 from sqlalchemy.orm import Session
 
 from papers.models import PaperRow, PaperSlugRow
 from paperprocessor.client import get_processed_result_path
 
+
+### HELPER FUNCTIONS ###
+
+def build_paper_slug(title: Optional[str], authors: Optional[str]) -> str:
+    """
+    Build a stable, URL-safe slug from title and authors.
+
+    Rules:
+    - Require both title and authors; raise ValueError otherwise
+    - Use first 12 words of title
+    - Append up to two author last names
+    - ASCII only, lowercase, hyphen-separated; max length ~120
+    """
+    if not title or not authors:
+        raise ValueError("Cannot generate slug without title and authors")
+
+    def _slugify_value(value: str) -> str:
+        try:
+            value = unicodedata.normalize('NFKD', value).encode('ascii', 'ignore').decode('ascii')
+        except Exception:
+            value = value
+        value = value.lower()
+        value = re.sub(r"[^a-z0-9]+", "-", value)
+        value = re.sub(r"-+", "-", value).strip('-')
+        return value[:120]
+
+    try:
+        title_tokens = [t for t in (title or '').split() if t]
+    except Exception:
+        title_tokens = []
+    limited_title = " ".join(title_tokens[:12]) if title_tokens else (title or "")
+
+    try:
+        author_list = [a.strip() for a in (authors or '').split(',') if a.strip()]
+    except Exception:
+        author_list = []
+    if len(author_list) == 0:
+        raise ValueError("Cannot generate slug: no authors present")
+
+    use_authors = author_list[:2]
+
+    def _last_name(full: str) -> str:
+        parts = full.split()
+        return parts[-1] if parts else full
+
+    author_bits = [_last_name(a) for a in use_authors]
+    base = f"{limited_title} {' '.join(author_bits)}".strip()
+    return _slugify_value(base)
+
+
+### MAIN FUNCTIONS ###
 
 def get_paper_by_uuid(db: Session, paper_uuid: str) -> Optional[PaperRow]:
     return db.query(PaperRow).filter(PaperRow.paper_uuid == str(paper_uuid)).first()

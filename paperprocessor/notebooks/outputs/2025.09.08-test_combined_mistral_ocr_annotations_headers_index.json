@@ -1,0 +1,116 @@
+[
+  {
+    "page_index": 0,
+    "line": 1,
+    "level": 1,
+    "text": "DEMONSTRATE-SEARCH-PREDICT: Composing retrieval and language models for knowledge-intensive NLP"
+  },
+  {
+    "page_index": 0,
+    "line": 6,
+    "level": 4,
+    "text": "Abstract"
+  },
+  {
+    "page_index": 0,
+    "line": 11,
+    "level": 2,
+    "text": "1. Introduction"
+  },
+  {
+    "page_index": 2,
+    "line": 1,
+    "level": 2,
+    "text": "2. DEMONSTRATE-SEARCH-PREDICT"
+  },
+  {
+    "page_index": 2,
+    "line": 5,
+    "level": 3,
+    "text": "2.1. Pretrained Modules: LM and RM"
+  },
+  {
+    "page_index": 2,
+    "line": 19,
+    "level": 3,
+    "text": "2.2. Datatypes and Control Flow"
+  },
+  {
+    "page_index": 2,
+    "line": 48,
+    "level": 1,
+    "text": "=> \"Five storeys\""
+  },
+  {
+    "page_index": 3,
+    "line": 7,
+    "level": 3,
+    "text": "2.3. DEMONSTRATE"
+  },
+  {
+    "page_index": 4,
+    "line": 25,
+    "level": 3,
+    "text": "2.4. SEARCH"
+  },
+  {
+    "page_index": 6,
+    "line": 21,
+    "level": 3,
+    "text": "2.5. PrediCt"
+  },
+  {
+    "page_index": 7,
+    "line": 35,
+    "level": 2,
+    "text": "3. Evaluation"
+  },
+  {
+    "page_index": 7,
+    "line": 41,
+    "level": 3,
+    "text": "3.1. Evaluation Methodology"
+  },
+  {
+    "page_index": 8,
+    "line": 5,
+    "level": 3,
+    "text": "3.2. Pretrained Modules"
+  },
+  {
+    "page_index": 8,
+    "line": 13,
+    "level": 3,
+    "text": "3.3. Baselines"
+  },
+  {
+    "page_index": 8,
+    "line": 38,
+    "level": 3,
+    "text": "3.4. Proposed DSP Programs"
+  },
+  {
+    "page_index": 9,
+    "line": 58,
+    "level": 3,
+    "text": "3.5. Development Datasets \\& Results"
+  },
+  {
+    "page_index": 11,
+    "line": 1,
+    "level": 2,
+    "text": "4. Conclusion"
+  },
+  {
+    "page_index": 11,
+    "line": 9,
+    "level": 2,
+    "text": "Acknowledgements"
+  },
+  {
+    "page_index": 11,
+    "line": 15,
+    "level": 2,
+    "text": "References"
+  }
+]

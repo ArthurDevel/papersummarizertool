@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from shared.db import SessionLocal
 from papers.models import PaperRow, PaperSlugRow
 from shared.arxiv.client import fetch_pdf_for_processing
-from paperprocessor_v2.client import process_paper_pdf_legacy
+from paperprocessor.client import process_paper_pdf_legacy
 from users.client import set_requests_processed
 
 

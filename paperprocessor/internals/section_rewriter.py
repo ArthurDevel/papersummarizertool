@@ -6,7 +6,7 @@ import json
 from typing import List, Tuple
 
 from shared.openrouter import client as openrouter_client
-from paperprocessor_v2.models import ProcessedDocument, Section, ApiCallCostForStep
+from paperprocessor.models import ProcessedDocument, Section, ApiCallCostForStep
 
 logger = logging.getLogger(__name__)
 

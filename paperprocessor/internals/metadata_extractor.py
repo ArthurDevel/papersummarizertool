@@ -3,7 +3,7 @@ import os
 from typing import Dict, Any, List
 
 from shared.openrouter import client as openrouter_client
-from paperprocessor_v2.models import ProcessedDocument, ApiCallCostForStep
+from paperprocessor.models import ProcessedDocument, ApiCallCostForStep
 
 logger = logging.getLogger(__name__)
 
