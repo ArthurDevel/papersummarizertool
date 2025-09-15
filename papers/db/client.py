@@ -6,9 +6,10 @@ from typing import List, Optional
 from sqlalchemy.orm import Session
 
 from papers.db.models import PaperRecord, PaperSlugRecord
+from papers.models import Paper, PaperSlug
 
 
-def paper_slug_record_to_paper_slug(record: PaperSlugRecord) -> 'PaperSlug':
+def paper_slug_record_to_paper_slug(record: PaperSlugRecord) -> PaperSlug:
     """Convert PaperSlugRecord to PaperSlug DTO."""
     from papers.models import PaperSlug
     return PaperSlug(
