@@ -1,54 +1,65 @@
 from __future__ import annotations
 
 from datetime import datetime
-
-from sqlalchemy import BigInteger, Column, DateTime, Integer, String, Text, UniqueConstraint, Float, Boolean, Index
-from sqlalchemy.dialects.mysql import MEDIUMTEXT
-
-from shared.db import Base
+from dataclasses import dataclass, field
+from typing import List, Optional
 
 
-class PaperRow(Base):
-    __tablename__ = "papers"
-
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
-    paper_uuid = Column(String(36), nullable=False)
-    arxiv_id = Column(String(64), nullable=False)
-    arxiv_version = Column(String(10), nullable=True)
-    arxiv_url = Column(String(255), nullable=True)
-    title = Column(String(512), nullable=True)
-    authors = Column(Text, nullable=True)
-    status = Column(String(20), nullable=False, default="not_started")
-    error_message = Column(Text, nullable=True)
-    # Which user initiated processing (auth provider id). Nullable for admin/system jobs.
-    initiated_by_user_id = Column(String(128), nullable=True)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    started_at = Column(DateTime, nullable=True)
-    finished_at = Column(DateTime, nullable=True)
-    # Metrics captured after processing completes
-    num_pages = Column(Integer, nullable=True)
-    processing_time_seconds = Column(Float, nullable=True)
-    total_cost = Column(Float, nullable=True)
-    avg_cost_per_page = Column(Float, nullable=True)
-    # Base64 data URL of a 400x400 PNG thumbnail cropped from the top square of the first page
-    thumbnail_data_url = Column(MEDIUMTEXT, nullable=True)
-
-    __table_args__ = (
-        UniqueConstraint("paper_uuid", name="uq_papers_paper_uuid"),
-        UniqueConstraint("arxiv_id", name="uq_papers_arxiv_id"),
-        Index("ix_papers_initiated_by_user_id", "initiated_by_user_id"),
-    )
+@dataclass
+class Page:
+    """Simple page model for papers."""
+    page_number: int
+    img_base64: str
 
 
-class PaperSlugRow(Base):
-    __tablename__ = "paper_slugs"
+@dataclass 
+class Section:
+    """Simple section model for papers."""
+    order_index: int
+    rewritten_content: str
 
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
-    slug = Column(String(255), nullable=False, unique=True)
-    paper_uuid = Column(String(36), nullable=True)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    # Tombstone preserves the slug after deletion of the paper
-    tombstone = Column(Boolean, nullable=False, default=False)
-    deleted_at = Column(DateTime, nullable=True)
+
+@dataclass
+class PaperSlug:
+    """Paper slug DTO."""
+    slug: str
+    paper_uuid: Optional[str] = None
+    created_at: Optional[datetime] = None
+    tombstone: bool = False
+    deleted_at: Optional[datetime] = None
+
+
+@dataclass
+class Paper:
+    """
+    Complete Paper DTO containing both metadata and full processing results.
+    
+    For metadata-only operations, content fields (pages, sections) will be empty.
+    For full paper operations, all fields are populated from database + JSON.
+    """
+    # Database metadata fields
+    paper_uuid: str
+    arxiv_id: str
+    title: Optional[str] = None
+    authors: Optional[str] = None
+    status: str = "not_started"
+    arxiv_version: Optional[str] = None
+    arxiv_url: Optional[str] = None
+    error_message: Optional[str] = None
+    initiated_by_user_id: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
+    num_pages: Optional[int] = None
+    processing_time_seconds: Optional[float] = None
+    total_cost: Optional[float] = None
+    avg_cost_per_page: Optional[float] = None
+    thumbnail_data_url: Optional[str] = None
+    
+    # Full processing content fields (loaded from JSON when needed)
+    pages: List[Page] = field(default_factory=list)
+    sections: List[Section] = field(default_factory=list)
+
+
 

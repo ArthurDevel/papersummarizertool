@@ -16,7 +16,7 @@ from api.types.search import (
 from search.client import search_by_user_query, find_similar_papers
 from shared.arxiv.client import _split_id_and_version
 from shared.db import get_session
-from papers.models import PaperSlugRow, PaperRow
+from papers.db.models import PaperSlugRecord, PaperRecord
 
 
 router = APIRouter()
@@ -53,7 +53,7 @@ async def search_query(req: SearchQueryRequest, db: Session = Depends(get_sessio
     # Step 2: Query the DB to find which of these papers we have processed.
     db_papers_by_arxiv_id = {}
     if result_arxiv_ids:
-        paper_rows = db.query(PaperRow).filter(PaperRow.arxiv_id.in_(result_arxiv_ids)).all()
+        paper_rows = db.query(PaperRecord).filter(PaperRecord.arxiv_id.in_(result_arxiv_ids)).all()
         db_papers_by_arxiv_id = {p.arxiv_id: p for p in paper_rows}
         logger.info(f"Found {len(paper_rows)} matching papers in the database.")
 
@@ -62,9 +62,9 @@ async def search_query(req: SearchQueryRequest, db: Session = Depends(get_sessio
     paper_uuids_from_db = [p.paper_uuid for p in db_papers_by_arxiv_id.values()]
     if paper_uuids_from_db:
         slug_rows = (
-            db.query(PaperSlugRow)
-            .filter(PaperSlugRow.paper_uuid.in_(paper_uuids_from_db))
-            .filter(PaperSlugRow.tombstone == False)
+            db.query(PaperSlugRecord)
+            .filter(PaperSlugRecord.paper_uuid.in_(paper_uuids_from_db))
+            .filter(PaperSlugRecord.tombstone == False)
             .all()
         )
         for row in slug_rows:

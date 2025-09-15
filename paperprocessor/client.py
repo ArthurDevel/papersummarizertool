@@ -14,7 +14,7 @@ from paperprocessor.internals.structure_extractor import extract_structure
 from paperprocessor.internals.header_formatter import format_headers
 from paperprocessor.internals.section_rewriter import rewrite_sections
 from shared.db import SessionLocal
-from papers.models import PaperRow
+from papers.client import get_paper_metadata, get_processed_result_path
 
 logger = logging.getLogger(__name__)
 
@@ -78,13 +78,6 @@ def _calculate_usage_summary(step_costs: List[ApiCallCostForStep]) -> Dict[str, 
     }
 
 
-def get_processed_result_path(paper_uuid: str) -> str:
-    """
-    Return absolute filesystem path for the stored processed result JSON for a paper.
-    Directory is controlled by env PAPER_JSON_DIR (default: data/paperjsons/).
-    """
-    base_dir = os.path.abspath(os.environ.get("PAPER_JSON_DIR", os.path.join(os.getcwd(), 'data', 'paperjsons')))
-    return os.path.join(base_dir, f"{paper_uuid}.json")
 
 
 def _load_usage_summary_from_json(paper_uuid: str) -> Optional[Dict[str, Any]]:
@@ -108,24 +101,22 @@ def get_processing_metrics_for_user(paper_uuid: str, auth_provider_id: str) -> D
     """
     session = SessionLocal()
     try:
-        row: PaperRow | None = session.query(PaperRow).filter(PaperRow.paper_uuid == str(paper_uuid)).first()
-        if not row:
-            raise FileNotFoundError("Paper not found")
-        if row.status != 'completed':
+        paper = get_paper_metadata(session, paper_uuid)
+        if paper.status != 'completed':
             raise RuntimeError("Paper not completed")
-        if not row.initiated_by_user_id or row.initiated_by_user_id != auth_provider_id:
+        if not paper.initiated_by_user_id or paper.initiated_by_user_id != auth_provider_id:
             raise PermissionError("Not authorized to view metrics for this paper")
-        usage_summary = _load_usage_summary_from_json(row.paper_uuid)
+        usage_summary = _load_usage_summary_from_json(paper.paper_uuid)
         return {
-            "paper_uuid": row.paper_uuid,
-            "status": row.status,
-            "created_at": row.created_at,
-            "started_at": row.started_at,
-            "finished_at": row.finished_at,
-            "num_pages": row.num_pages,
-            "processing_time_seconds": row.processing_time_seconds,
-            "total_cost": row.total_cost,
-            "avg_cost_per_page": row.avg_cost_per_page,
+            "paper_uuid": paper.paper_uuid,
+            "status": paper.status,
+            "created_at": paper.created_at,
+            "started_at": paper.started_at,
+            "finished_at": paper.finished_at,
+            "num_pages": paper.num_pages,
+            "processing_time_seconds": paper.processing_time_seconds,
+            "total_cost": paper.total_cost,
+            "avg_cost_per_page": paper.avg_cost_per_page,
             "usage_summary": usage_summary,
         }
     finally:
@@ -138,24 +129,22 @@ def get_processing_metrics_for_admin(paper_uuid: str) -> Dict[str, Any]:
     """
     session = SessionLocal()
     try:
-        row: PaperRow | None = session.query(PaperRow).filter(PaperRow.paper_uuid == str(paper_uuid)).first()
-        if not row:
-            raise FileNotFoundError("Paper not found")
-        if row.status != 'completed':
+        paper = get_paper_metadata(session, paper_uuid)
+        if paper.status != 'completed':
             raise RuntimeError("Paper not completed")
-        usage_summary = _load_usage_summary_from_json(row.paper_uuid)
+        usage_summary = _load_usage_summary_from_json(paper.paper_uuid)
         return {
-            "paper_uuid": row.paper_uuid,
-            "status": row.status,
-            "created_at": row.created_at,
-            "started_at": row.started_at,
-            "finished_at": row.finished_at,
-            "num_pages": row.num_pages,
-            "processing_time_seconds": row.processing_time_seconds,
-            "total_cost": row.total_cost,
-            "avg_cost_per_page": row.avg_cost_per_page,
+            "paper_uuid": paper.paper_uuid,
+            "status": paper.status,
+            "created_at": paper.created_at,
+            "started_at": paper.started_at,
+            "finished_at": paper.finished_at,
+            "num_pages": paper.num_pages,
+            "processing_time_seconds": paper.processing_time_seconds,
+            "total_cost": paper.total_cost,
+            "avg_cost_per_page": paper.avg_cost_per_page,
             "usage_summary": usage_summary,
-            "initiated_by_user_id": row.initiated_by_user_id,
+            "initiated_by_user_id": paper.initiated_by_user_id,
         }
     finally:
         session.close()

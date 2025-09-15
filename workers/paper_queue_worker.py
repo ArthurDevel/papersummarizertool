@@ -11,7 +11,9 @@ from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from shared.db import SessionLocal
-from papers.models import PaperRow, PaperSlugRow
+from papers.models import Paper, PaperSlug
+from papers.client import get_paper_metadata, save_paper
+from papers.db.models import PaperRecord, PaperSlugRecord
 from shared.arxiv.client import fetch_pdf_for_processing
 from paperprocessor.client import process_paper_pdf_legacy
 from users.client import set_requests_processed
@@ -34,7 +36,7 @@ def session_scope():
         session.close()
 
 
-async def _process_one(job: PaperRow) -> None:
+async def _process_one(job: PaperRecord) -> None:
     logger.info("Processing job id=%s paper_uuid=%s arxiv=%s", job.id, job.paper_uuid, job.arxiv_id)
     try:
         pdf = await fetch_pdf_for_processing(job.arxiv_url or job.arxiv_id)
@@ -50,7 +52,7 @@ async def _process_one(job: PaperRow) -> None:
         avg_cost_per_page = result.get('avg_cost_per_page')
 
         with session_scope() as s:
-            j = s.get(PaperRow, job.id, with_for_update=True)
+            j = s.get(PaperRecord, job.id, with_for_update=True)
             if not j:
                 return
             j.status = 'completed'
@@ -70,23 +72,23 @@ async def _process_one(job: PaperRow) -> None:
             try:
                 # If this paper already has a non-tombstoned slug, reuse it (idempotent restart)
                 existing_for_paper = (
-                    s.query(PaperSlugRow)
-                    .filter(PaperSlugRow.paper_uuid == j.paper_uuid, PaperSlugRow.tombstone == False)  # noqa: E712
-                    .order_by(PaperSlugRow.created_at.desc())
+                    s.query(PaperSlugRecord)
+                    .filter(PaperSlugRecord.paper_uuid == j.paper_uuid, PaperSlugRecord.tombstone == False)  # noqa: E712
+                    .order_by(PaperSlugRecord.created_at.desc())
                     .first()
                 )
                 if existing_for_paper:
                     slug = existing_for_paper.slug
                 else:
                     slug = _build_paper_slug(j.title, j.authors)
-                    exists = s.query(PaperSlugRow).filter(PaperSlugRow.slug == slug).first()
+                    exists = s.query(PaperSlugRecord).filter(PaperSlugRecord.slug == slug).first()
                     if exists:
                         # If slug already maps to this paper, reuse; otherwise it's a true collision
                         if exists.paper_uuid != j.paper_uuid:
                             raise ValueError(f"Slug collision for '{slug}'")
                         # Reuse without inserting a duplicate row
                     else:
-                        s.add(PaperSlugRow(slug=slug, paper_uuid=j.paper_uuid, tombstone=False, created_at=datetime.utcnow()))
+                        s.add(PaperSlugRecord(slug=slug, paper_uuid=j.paper_uuid, tombstone=False, created_at=datetime.utcnow()))
             except Exception:
                 logger.exception("Failed to create slug for paper_uuid=%s", j.paper_uuid)
                 raise
@@ -97,7 +99,7 @@ async def _process_one(job: PaperRow) -> None:
     except Exception as e:
         logger.exception("Job %s failed", job.id)
         with session_scope() as s:
-            j = s.get(PaperRow, job.id, with_for_update=True)
+            j = s.get(PaperRecord, job.id, with_for_update=True)
             if not j:
                 return
             j.status = 'failed'
@@ -107,7 +109,7 @@ async def _process_one(job: PaperRow) -> None:
             s.add(j)
 
 
-def _claim_next_job() -> Optional[PaperRow]:
+def _claim_next_job() -> Optional[PaperRecord]:
     # Use a transaction and SELECT ... FOR UPDATE SKIP LOCKED to avoid contention
     with session_scope() as s:
         # MySQL 8 supports SKIP LOCKED
@@ -124,7 +126,7 @@ def _claim_next_job() -> Optional[PaperRow]:
         ).first()
         if not row:
             return None
-        job: PaperRow = s.get(PaperRow, row[0], with_for_update=True)
+        job: PaperRecord = s.get(PaperRecord, row[0], with_for_update=True)
         if not job:
             return None
         job.status = 'processing'

@@ -17,7 +17,9 @@ from api.types.admin import (
 )
 from paperprocessor.client import get_processing_metrics_for_admin
 from papers.client import build_paper_slug
-from papers.models import PaperRow, PaperSlugRow
+from papers.models import Paper, PaperSlug
+from papers.db.models import PaperRecord, PaperSlugRecord
+from papers.client import get_paper_metadata
 from shared.arxiv.client import normalize_id, fetch_metadata, download_pdf
 from shared.db import get_session
 from papers import client as papers_client
@@ -90,7 +92,7 @@ def admin_list_papers(status: Optional[str] = None, limit: int = 500, db: Sessio
 
 @router.post("/admin/papers/{paper_uuid}/restart", status_code=200)
 def admin_restart_paper(paper_uuid: uuid.UUID, _body: RestartPaperRequest | None = None, db: Session = Depends(get_session), _admin: bool = Depends(require_admin)):
-    row = db.query(PaperRow).filter(PaperRow.paper_uuid == str(paper_uuid)).first()
+    row = db.query(PaperRecord).filter(PaperRecord.paper_uuid == str(paper_uuid)).first()
     if not row:
         raise HTTPException(status_code=404, detail="Paper not found")
     if row.status == "processing":
@@ -134,14 +136,14 @@ async def admin_start_processing_requested(arxiv_id_or_url: str, db: Session = D
     now = datetime.utcnow()
 
     # Check if paper already exists in DB
-    job = db.query(PaperRow).filter(PaperRow.arxiv_id == base_id).first()
+    job = db.query(PaperRecord).filter(PaperRecord.arxiv_id == base_id).first()
     if job:
         # Do not modify existing job; return its identity
         return StartProcessingResponse(paper_uuid=job.paper_uuid, status=job.status)
 
     # Create new papers row with status 'not_started'
     paper_uuid = str(uuid.uuid4())
-    new_job = PaperRow(
+    new_job = PaperRecord(
         paper_uuid=paper_uuid,
         arxiv_id=base_id,
         arxiv_version=version,
@@ -218,7 +220,7 @@ def admin_import_paper_json(paper: Dict[str, Any], db: Session = Depends(get_ses
     now = datetime.utcnow()
 
     # Upsert by arxiv_id
-    existing = db.query(PaperRow).filter(PaperRow.arxiv_id == arxiv_id).first()
+    existing = db.query(PaperRecord).filter(PaperRecord.arxiv_id == arxiv_id).first()
     if existing:
         target_uuid = existing.paper_uuid
         # Update existing row to completed
@@ -241,10 +243,10 @@ def admin_import_paper_json(paper: Dict[str, Any], db: Session = Depends(get_ses
     else:
         # Ensure paper_uuid uniqueness; if collides with another arxiv_id, generate a new one
         target_uuid = paper_id
-        by_uuid = db.query(PaperRow).filter(PaperRow.paper_uuid == target_uuid).first()
+        by_uuid = db.query(PaperRecord).filter(PaperRecord.paper_uuid == target_uuid).first()
         if by_uuid and by_uuid.arxiv_id != arxiv_id:
             target_uuid = str(uuid.uuid4())
-        new_row = PaperRow(
+        new_row = PaperRecord(
             paper_uuid=target_uuid,
             arxiv_id=arxiv_id,
             arxiv_version=arxiv_version_val,
@@ -271,20 +273,20 @@ def admin_import_paper_json(paper: Dict[str, Any], db: Session = Depends(get_ses
     try:
         # Reuse existing non-tombstoned slug for this paper if present
         existing_for_paper = (
-            db.query(PaperSlugRow)
-            .filter(PaperSlugRow.paper_uuid == target_paper_row.paper_uuid, PaperSlugRow.tombstone == False)  # noqa: E712
-            .order_by(PaperSlugRow.created_at.desc())
+            db.query(PaperSlugRecord)
+            .filter(PaperSlugRecord.paper_uuid == target_paper_row.paper_uuid, PaperSlugRecord.tombstone == False)  # noqa: E712
+            .order_by(PaperSlugRecord.created_at.desc())
             .first()
         )
         if not existing_for_paper:
             slug = build_paper_slug(title, authors)
-            exists = db.query(PaperSlugRow).filter(PaperSlugRow.slug == slug).first()
+            exists = db.query(PaperSlugRecord).filter(PaperSlugRecord.slug == slug).first()
             if exists:
                 if exists.paper_uuid != target_paper_row.paper_uuid:
                     raise HTTPException(status_code=409, detail="Slug already exists")
                 # else idempotent import for same paper; do not insert
             else:
-                db.add(PaperSlugRow(slug=slug, paper_uuid=target_paper_row.paper_uuid, tombstone=False, created_at=now))
+                db.add(PaperSlugRecord(slug=slug, paper_uuid=target_paper_row.paper_uuid, tombstone=False, created_at=now))
     except HTTPException:
         raise
     except Exception:
@@ -308,7 +310,7 @@ def admin_import_paper_json(paper: Dict[str, Any], db: Session = Depends(get_ses
         logger.exception("Failed to write imported JSON for paper_uuid=%s", target_uuid)
 
     # Return the DB row
-    job = db.query(PaperRow).filter(PaperRow.paper_uuid == target_uuid).first()
+    job = db.query(PaperRecord).filter(PaperRecord.paper_uuid == target_uuid).first()
     if not job:
         raise HTTPException(status_code=500, detail="Import completed but record not found")
     return JobDbStatus(

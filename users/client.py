@@ -4,7 +4,7 @@ from typing import List, Dict, Any
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from papers.models import PaperRow, PaperSlugRow
+from papers.db.models import PaperRecord, PaperSlugRecord
 from users.models import UserRow, UserListRow, UserRequestRow
 
 logger = logging.getLogger(__name__)
@@ -42,7 +42,7 @@ async def add_list_entry(db: Session, auth_provider_id: str, paper_uuid: str) ->
     user = db.query(UserRow).filter(UserRow.id == auth_provider_id).first()
     if not user:
         raise ValueError("User not found")
-    paper = db.query(PaperRow).filter(PaperRow.paper_uuid == paper_uuid).first()
+    paper = db.query(PaperRecord).filter(PaperRecord.paper_uuid == paper_uuid).first()
     if not paper:
         raise ValueError("Paper not found")
     existing = (
@@ -62,7 +62,7 @@ async def remove_list_entry(db: Session, auth_provider_id: str, paper_uuid: str)
     user = db.query(UserRow).filter(UserRow.id == auth_provider_id).first()
     if not user:
         raise ValueError("User not found")
-    paper = db.query(PaperRow).filter(PaperRow.paper_uuid == paper_uuid).first()
+    paper = db.query(PaperRecord).filter(PaperRecord.paper_uuid == paper_uuid).first()
     if not paper:
         raise ValueError("Paper not found")
     q = (
@@ -78,7 +78,7 @@ async def is_entry_present(db: Session, auth_provider_id: str, paper_uuid: str) 
     user = db.query(UserRow).filter(UserRow.id == auth_provider_id).first()
     if not user:
         raise ValueError("User not found")
-    paper = db.query(PaperRow).filter(PaperRow.paper_uuid == paper_uuid).first()
+    paper = db.query(PaperRecord).filter(PaperRecord.paper_uuid == paper_uuid).first()
     if not paper:
         return {"exists": False}
     exists = (
@@ -101,8 +101,8 @@ async def list_user_entries(db: Session, auth_provider_id: str) -> List[Dict[str
 
     # Join user_lists -> papers (include list row to expose created_at)
     rows = (
-        db.query(PaperRow, UserListRow)
-        .join(UserListRow, UserListRow.paper_id == PaperRow.id)
+        db.query(PaperRecord, UserListRow)
+        .join(UserListRow, UserListRow.paper_id == PaperRecord.id)
         .filter(UserListRow.user_id == user.id)
         .all()
     )
@@ -112,9 +112,9 @@ async def list_user_entries(db: Session, auth_provider_id: str) -> List[Dict[str
     slugs_by_uuid: Dict[str, str] = {}
     if paper_uuid_list:
         slug_rows = (
-            db.query(PaperSlugRow)
-            .filter(PaperSlugRow.paper_uuid.in_(paper_uuid_list))
-            .filter(PaperSlugRow.tombstone == False)  # noqa: E712
+            db.query(PaperSlugRecord)
+            .filter(PaperSlugRecord.paper_uuid.in_(paper_uuid_list))
+            .filter(PaperSlugRecord.tombstone == False)  # noqa: E712
             .all()
         )
         for r in slug_rows:
@@ -290,7 +290,7 @@ def list_aggregated_user_requests_for_admin(db: Session, limit: int = 500, offse
     - arxiv_abs_url, arxiv_pdf_url
     - num_pages (from papers if exists), processed_slug (latest non-tombstoned)
     """
-    from papers.models import PaperRow, PaperSlugRow
+    from papers.db.models import PaperRecord, PaperSlugRecord
 
     sub = (
         db.query(
@@ -315,10 +315,10 @@ def list_aggregated_user_requests_for_admin(db: Session, limit: int = 500, offse
             sub.c.last_requested_at,
             sub.c.title,
             sub.c.authors,
-            PaperRow.num_pages,
-            PaperRow.paper_uuid,
+            PaperRecord.num_pages,
+            PaperRecord.paper_uuid,
         )
-        .outerjoin(PaperRow, func.binary(PaperRow.arxiv_id) == func.binary(sub.c.arxiv_id))
+        .outerjoin(PaperRecord, func.binary(PaperRecord.arxiv_id) == func.binary(sub.c.arxiv_id))
         .filter((sub.c.any_processed == 0) | (sub.c.any_processed.is_(None)))
         .order_by(sub.c.last_requested_at.desc())
         .limit(max(1, min(limit, 1000)))
@@ -331,9 +331,9 @@ def list_aggregated_user_requests_for_admin(db: Session, limit: int = 500, offse
     uuids = [r.paper_uuid for r in rows if getattr(r, 'paper_uuid', None)]
     if uuids:
         slug_rows = (
-            db.query(PaperSlugRow)
-            .filter(PaperSlugRow.paper_uuid.in_(uuids))
-            .filter(PaperSlugRow.tombstone == False)  # noqa: E712
+            db.query(PaperSlugRecord)
+            .filter(PaperSlugRecord.paper_uuid.in_(uuids))
+            .filter(PaperSlugRecord.tombstone == False)  # noqa: E712
             .all()
         )
         for s in slug_rows:

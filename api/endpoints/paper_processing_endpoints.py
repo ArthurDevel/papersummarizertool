@@ -5,10 +5,12 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from api.types.paper_processing_api_models import Paper, JobStatusResponse, MinimalPaperItem
 from api.types.paper_processing_endpoints import JobDbStatus
-from paperprocessor.client import process_paper_pdf_legacy, get_processed_result_path
+from paperprocessor.client import process_paper_pdf_legacy
+from papers.client import get_processed_result_path
 from papers.client import build_paper_slug
 from shared.db import get_session
-from papers.models import PaperRow, PaperSlugRow
+from papers.models import Paper, PaperSlug
+from papers.db.models import PaperRecord, PaperSlugRecord
 from papers import client as papers_client
 from shared.arxiv.client import normalize_id, parse_url, fetch_metadata, download_pdf
 from shared.arxiv.models import ArxivMetadata
@@ -111,11 +113,11 @@ async def enqueue_arxiv(req: EnqueueArxivRequest, db: Session = Depends(get_sess
     paper_uuid = str(uuid.uuid4())
 
     # Duplicate check
-    existing = db.query(PaperRow).filter(PaperRow.arxiv_id == norm.arxiv_id).first()
+    existing = db.query(PaperRecord).filter(PaperRecord.arxiv_id == norm.arxiv_id).first()
     if existing:
         raise HTTPException(status_code=409, detail="A paper with this arXiv ID already exists")
 
-    job = PaperRow(
+    job = PaperRecord(
         paper_uuid=paper_uuid,
         arxiv_id=norm.arxiv_id,
         arxiv_version=norm.version,
@@ -167,17 +169,17 @@ async def check_arxiv(arxiv_id_or_url: str, db: Session = Depends(get_session)):
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid arXiv URL or identifier")
 
-    job = db.query(PaperRow).filter(PaperRow.arxiv_id == arxiv_id).first()
+    job = db.query(PaperRecord).filter(PaperRecord.arxiv_id == arxiv_id).first()
     if job and job.status == "completed":
         # Check for JSON file existence as a proxy for being fully processed and available.
         json_path = get_processed_result_path(job.paper_uuid)
         if os.path.exists(json_path):
             # Resolve the latest, non-tombstoned slug for this paper.
             slug_row = (
-                db.query(PaperSlugRow)
-                .filter(PaperSlugRow.paper_uuid == job.paper_uuid)
-                .filter(PaperSlugRow.tombstone == False)  # noqa: E712
-                .order_by(PaperSlugRow.created_at.desc())
+                db.query(PaperSlugRecord)
+                .filter(PaperSlugRecord.paper_uuid == job.paper_uuid)
+                .filter(PaperSlugRecord.tombstone == False)  # noqa: E712
+                .order_by(PaperSlugRecord.created_at.desc())
                 .first()
             )
             if slug_row:
@@ -222,7 +224,7 @@ class ResolveSlugResponse(BaseModel):
 @router.get("/papers/slug/{slug}", response_model=ResolveSlugResponse)
 def resolve_slug(slug: str, db: Session = Depends(get_session)):
     logger.info("GET /papers/slug/%s", slug)
-    row = db.query(PaperSlugRow).filter(PaperSlugRow.slug == slug).first()
+    row = db.query(PaperSlugRecord).filter(PaperSlugRecord.slug == slug).first()
     if not row:
         logger.warning("Slug not found slug=%s", slug)
         raise HTTPException(status_code=404, detail="Slug not found")
@@ -238,17 +240,17 @@ class CreateSlugRequest(BaseModel):
 def create_slug(paper_uuid: UUID, db: Session = Depends(get_session)):
     # Load paper and validate required metadata
     logger.info("POST /papers/%s/slug (create)", paper_uuid)
-    job = db.query(PaperRow).filter(PaperRow.paper_uuid == str(paper_uuid)).first()
+    job = db.query(PaperRecord).filter(PaperRecord.paper_uuid == str(paper_uuid)).first()
     if not job:
         logger.warning("Cannot create slug: paper not found paper_uuid=%s", paper_uuid)
         raise HTTPException(status_code=404, detail="Paper not found")
 
     # If this paper already has a non-tombstoned slug, return it (idempotent)
     existing_for_paper = (
-        db.query(PaperSlugRow)
-        .filter(PaperSlugRow.paper_uuid == str(paper_uuid))
-        .filter(PaperSlugRow.tombstone == False)  # noqa: E712
-        .order_by(PaperSlugRow.created_at.desc())
+        db.query(PaperSlugRecord)
+        .filter(PaperSlugRecord.paper_uuid == str(paper_uuid))
+        .filter(PaperSlugRecord.tombstone == False)  # noqa: E712
+        .order_by(PaperSlugRecord.created_at.desc())
         .first()
     )
     if existing_for_paper:
@@ -259,13 +261,13 @@ def create_slug(paper_uuid: UUID, db: Session = Depends(get_session)):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     # Enforce uniqueness strictly; allow if it already maps to this paper
-    existing = db.query(PaperSlugRow).filter(PaperSlugRow.slug == slug).first()
+    existing = db.query(PaperSlugRecord).filter(PaperSlugRecord.slug == slug).first()
     if existing:
         if existing.paper_uuid != str(paper_uuid):
             raise HTTPException(status_code=409, detail="Slug already exists")
         return ResolveSlugResponse(paper_uuid=existing.paper_uuid, slug=existing.slug, tombstone=bool(existing.tombstone))
 
-    row = PaperSlugRow(slug=slug, paper_uuid=paper_uuid, tombstone=False, created_at=datetime.utcnow())
+    row = PaperSlugRecord(slug=slug, paper_uuid=paper_uuid, tombstone=False, created_at=datetime.utcnow())
     db.add(row)
     db.commit()
     db.refresh(row)
@@ -277,10 +279,10 @@ def get_slug_for_paper(paper_uuid: UUID, db: Session = Depends(get_session)):
     # Return latest non-tombstone slug for this paper
     logger.info("GET /papers/%s/slug", paper_uuid)
     row = (
-        db.query(PaperSlugRow)
-        .filter(PaperSlugRow.paper_uuid == str(paper_uuid))
-        .filter(PaperSlugRow.tombstone == False)  # noqa: E712
-        .order_by(PaperSlugRow.created_at.desc())
+        db.query(PaperSlugRecord)
+        .filter(PaperSlugRecord.paper_uuid == str(paper_uuid))
+        .filter(PaperSlugRecord.tombstone == False)  # noqa: E712
+        .order_by(PaperSlugRecord.created_at.desc())
         .first()
     )
     if not row:

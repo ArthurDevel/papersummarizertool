@@ -45,6 +45,8 @@ class ApiCallCostForStep:
 @dataclass
 class ProcessedDocument:
     pdf_base64: str            # base64 encoded version of the pdf
+    paper_uuid: Optional[str] = None    # If set, overwrite existing paper
+    arxiv_id: Optional[str] = None      # ArXiv ID for duplicate checking
     title: Optional[str] = None
     authors: Optional[str] = None
     pages: List[ProcessedPage] = field(default_factory=list)
