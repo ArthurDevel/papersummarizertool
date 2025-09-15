@@ -58,6 +58,8 @@ Main API functions for paper operations:
 - `list_papers(db: Session, statuses: Optional[List[str]], limit: int) -> List[Paper]` - List papers with optional status filtering
 - `delete_paper(db: Session, paper_uuid: str) -> bool` - Delete paper and associated files
 - `build_paper_slug(title: Optional[str], authors: Optional[str]) -> str` - Generate URL-safe slug from paper metadata
+- `create_paper_slug(db: Session, paper: Paper) -> PaperSlug` - Create unique slug for paper with collision checking
+- `find_existing_paper_slug(db: Session, paper_uuid: str) -> Optional[PaperSlug]` - Find existing slug for paper
 
 ## db/
 

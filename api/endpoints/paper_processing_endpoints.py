@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from api.types.paper_processing_api_models import Paper, JobStatusResponse, MinimalPaperItem
 from api.types.paper_processing_endpoints import JobDbStatus
-from paperprocessor.client import process_paper_pdf_legacy
+from paperprocessor.client import process_paper_pdf
 from papers.client import get_processed_result_path
 from papers.client import build_paper_slug
 from shared.db import get_session
@@ -47,7 +47,84 @@ async def process_paper_in_background(job_id: str, contents: bytes):
     and update the job status upon completion or failure.
     """
     try:
-        result = await process_paper_pdf_legacy(contents)
+        # Use new processing pipeline
+        import time
+        _t0 = time.perf_counter()
+        
+        doc = await process_paper_pdf(contents)
+        
+        # Convert to legacy dict format for API compatibility
+        from paperprocessor.client import _calculate_usage_summary
+        
+        # Helper to build data URL for a base64-encoded PNG
+        def _as_data_url_png(b64: str) -> str:
+            return f"data:image/png;base64,{b64}"
+
+        # Pages list in legacy format
+        pages = []
+        for idx, page in enumerate(doc.pages):
+            pages.append({
+                "page_number": idx + 1,
+                "image_data_url": _as_data_url_png(page.img_base64),
+            })
+
+        # Thumbnail: use full first page image as a simple thumbnail
+        thumbnail_data_url = None
+        if doc.pages:
+            thumbnail_data_url = _as_data_url_png(doc.pages[0].img_base64)
+
+        # Sections: flat list of rewritten contents
+        sections = []
+        for s in doc.sections:
+            sections.append({
+                "rewritten_content": s.rewritten_content,
+            })
+
+        # Convert individual images from pages to legacy figures format
+        figures = []
+        for page in doc.pages:
+            for processed_image in page.images:
+                figures.append({
+                    "figure_identifier": processed_image.uuid,
+                    "location_page": processed_image.page_number,
+                    "explanation": "",  # Not extracted in current pipeline
+                    "image_path": "",   # Not used - we store base64 directly
+                    "image_data_url": f"data:image/png;base64,{processed_image.img_base64}",
+                    "referenced_on_pages": [processed_image.page_number],
+                    "bounding_box": [
+                        processed_image.top_left_x,
+                        processed_image.top_left_y,
+                        processed_image.bottom_right_x,
+                        processed_image.bottom_right_y
+                    ],
+                    "page_image_size": None  # Unknown - not stored in ProcessedPage
+                })
+
+        # Metrics
+        processing_time_seconds = max(0.0, time.perf_counter() - _t0)
+        num_pages = len(doc.pages)
+        
+        # Calculate usage summary from collected step costs
+        usage_summary = _calculate_usage_summary(doc.step_costs)
+        total_cost = usage_summary.get("total_cost")
+        avg_cost_per_page = (total_cost / num_pages) if total_cost and num_pages > 0 else None
+
+        result = {
+            "paper_id": job_id,
+            "title": doc.title,
+            "authors": doc.authors,
+            "thumbnail_data_url": thumbnail_data_url,
+            "sections": sections,
+            "tables": [],
+            "figures": figures,
+            "pages": pages,
+            "usage_summary": usage_summary,
+            "processing_time_seconds": processing_time_seconds,
+            "num_pages": num_pages,
+            "total_cost": total_cost,
+            "avg_cost_per_page": avg_cost_per_page,
+        }
+        
         update_job_status(job_id, "completed", result)
         logger.info(f"Job {job_id} completed successfully.")
     except Exception as e:

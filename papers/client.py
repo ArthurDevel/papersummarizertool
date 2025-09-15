@@ -15,9 +15,10 @@ from sqlalchemy.orm import Session
 from papers.models import Paper, PaperSlug, Page, Section
 from papers.db.client import (
     get_paper_record, create_paper_record, update_paper_record, list_paper_records, 
-    get_paper_slugs, get_all_paper_slugs, tombstone_paper_slugs
+    get_paper_slugs, get_all_paper_slugs, tombstone_paper_slugs,
+    find_existing_paper_slug_record, find_slug_record_by_name, create_paper_slug_record
 )
-from papers.db.models import PaperRecord, PaperSlugRecord
+from papers.db.models import PaperRecord
 from paperprocessor.models import ProcessedDocument
 
 
@@ -34,49 +35,105 @@ def get_processed_result_path(paper_uuid: str) -> str:
 
 def build_paper_slug(title: Optional[str], authors: Optional[str]) -> str:
     """
-    Build a stable, URL-safe slug from title and authors.
-
-    Rules:
-    - Require both title and authors; raise ValueError otherwise
-    - Use first 12 words of title
-    - Append up to two author last names
-    - ASCII only, lowercase, hyphen-separated; max length ~120
+    Generate a URL-safe slug from paper title and authors.
+    
+    Args:
+        title: Paper title
+        authors: Comma-separated author names
+        
+    Returns:
+        str: URL-safe slug (max 120 characters)
+        
+    Raises:
+        ValueError: If title or authors are missing
     """
     if not title or not authors:
         raise ValueError("Cannot generate slug without title and authors")
-
-    def _slugify_value(value: str) -> str:
-        try:
-            value = unicodedata.normalize('NFKD', value).encode('ascii', 'ignore').decode('ascii')
-        except Exception:
-            value = value
-        value = value.lower()
-        value = re.sub(r"[^a-z0-9]+", "-", value)
-        value = re.sub(r"-+", "-", value).strip('-')
-        return value[:120]
-
+    
+    # Step 1: Normalize unicode characters to ASCII
     try:
-        title_tokens = [t for t in (title or '').split() if t]
+        normalized_title = unicodedata.normalize('NFKD', title).encode('ascii', 'ignore').decode('ascii')
+        normalized_authors = unicodedata.normalize('NFKD', authors).encode('ascii', 'ignore').decode('ascii')
     except Exception:
-        title_tokens = []
-    limited_title = " ".join(title_tokens[:12]) if title_tokens else (title or "")
-
-    try:
-        author_list = [a.strip() for a in (authors or '').split(',') if a.strip()]
-    except Exception:
-        author_list = []
-    if len(author_list) == 0:
+        normalized_title, normalized_authors = title, authors
+    
+    # Step 2: Extract first 12 words from title
+    title_words = [word for word in normalized_title.split() if word][:12]
+    title_part = " ".join(title_words) if title_words else normalized_title
+    
+    # Step 3: Extract up to 2 author last names
+    author_names = [name.strip() for name in normalized_authors.split(',') if name.strip()]
+    if not author_names:
         raise ValueError("Cannot generate slug: no authors present")
+    
+    def _extract_last_name(full_name: str) -> str:
+        name_parts = full_name.split()
+        return name_parts[-1] if name_parts else full_name
+    
+    author_last_names = [_extract_last_name(name) for name in author_names[:2]]
+    author_part = " ".join(author_last_names)
+    
+    # Step 4: Combine and create URL-safe slug
+    combined_text = f"{title_part} {author_part}".strip()
+    slug = combined_text.lower()
+    slug = re.sub(r"[^a-z0-9]+", "-", slug)
+    slug = re.sub(r"-+", "-", slug).strip('-')
+    
+    return slug[:120]
 
-    use_authors = author_list[:2]
 
-    def _last_name(full: str) -> str:
-        parts = full.split()
-        return parts[-1] if parts else full
+def find_existing_paper_slug(db: Session, paper_uuid: str) -> Optional[PaperSlug]:
+    """
+    Find existing non-tombstoned slug for a paper.
+    
+    Args:
+        db: Active database session
+        paper_uuid: UUID of the paper to find slug for
+        
+    Returns:
+        Optional[PaperSlug]: Existing slug DTO if found, None otherwise
+    """
+    existing_slug_record = find_existing_paper_slug_record(db, paper_uuid)
+    if existing_slug_record:
+        return PaperSlug.model_validate(existing_slug_record)
+    return None
 
-    author_bits = [_last_name(a) for a in use_authors]
-    base = f"{limited_title} {' '.join(author_bits)}".strip()
-    return _slugify_value(base)
+
+def create_paper_slug(db: Session, paper: Paper) -> PaperSlug:
+    """
+    Create a unique slug for a paper, checking for collisions.
+    
+    Args:
+        db: Active database session
+        paper: Paper object with title and authors
+        
+    Returns:
+        PaperSlug: Created or existing slug DTO
+        
+    Raises:
+        ValueError: If slug collision occurs with different paper
+    """
+    # Step 1: Check if paper already has a slug
+    existing_slug = find_existing_paper_slug(db, paper.paper_uuid)
+    if existing_slug:
+        return existing_slug
+    
+    # Step 2: Generate new slug from paper metadata
+    new_slug_string = build_paper_slug(paper.title, paper.authors)
+    
+    # Step 3: Check for slug collisions
+    existing_slug_record = find_slug_record_by_name(db, new_slug_string)
+    
+    if existing_slug_record:
+        # Allow reuse if slug already maps to this same paper
+        if existing_slug_record.paper_uuid != paper.paper_uuid:
+            raise ValueError(f"Slug collision for '{new_slug_string}' - already used by different paper")
+        return PaperSlug.model_validate(existing_slug_record)
+    
+    # Step 4: Create new slug record using database layer
+    created_slug_record = create_paper_slug_record(db, new_slug_string, paper.paper_uuid)
+    
+    return PaperSlug.model_validate(created_slug_record)
 
 
 ### MAIN FUNCTIONS ###
@@ -256,6 +313,26 @@ def save_paper(db: Session, processed_content: ProcessedDocument) -> Paper:
             "page_number": idx + 1,
             "image_data_url": f"data:image/png;base64,{page.img_base64}",
         })
+    
+    # Convert individual images from pages to legacy figures format
+    for page in processed_content.pages:
+        for processed_image in page.images:
+            result_dict["figures"].append({
+                "figure_identifier": processed_image.uuid,
+                "location_page": processed_image.page_number,
+                "explanation": "",  # Not extracted in current pipeline
+                "image_path": "",   # Not used - we store base64 directly
+                "image_data_url": f"data:image/png;base64,{processed_image.img_base64}",
+                "referenced_on_pages": [processed_image.page_number],
+                "bounding_box": [
+                    processed_image.top_left_x,
+                    processed_image.top_left_y,
+                    processed_image.bottom_right_x,
+                    processed_image.bottom_right_y
+                ],
+                # TODO: Add page dimensions to ProcessedPage model to get actual size
+                "page_image_size": None  # Unknown - not stored in ProcessedPage
+            })
     
     # Set thumbnail from first page
     if processed_content.pages:

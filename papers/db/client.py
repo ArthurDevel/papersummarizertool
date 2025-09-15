@@ -120,3 +120,62 @@ def tombstone_paper_slugs(db: Session, paper_uuid: str) -> None:
         PaperSlugRecord.paper_uuid == paper_uuid,
         PaperSlugRecord.tombstone == False  # noqa: E712
     ).update({'tombstone': True, 'deleted_at': datetime.utcnow()})
+
+
+def find_existing_paper_slug_record(db: Session, paper_uuid: str) -> Optional[PaperSlugRecord]:
+    """
+    Find existing non-tombstoned slug record for a paper.
+    
+    Args:
+        db: Active database session
+        paper_uuid: UUID of the paper to find slug for
+        
+    Returns:
+        Optional[PaperSlugRecord]: Existing slug record if found, None otherwise
+    """
+    return (
+        db.query(PaperSlugRecord)
+        .filter(
+            PaperSlugRecord.paper_uuid == paper_uuid,
+            PaperSlugRecord.tombstone == False  # noqa: E712
+        )
+        .order_by(PaperSlugRecord.created_at.desc())
+        .first()
+    )
+
+
+def find_slug_record_by_name(db: Session, slug: str) -> Optional[PaperSlugRecord]:
+    """
+    Find slug record by slug name.
+    
+    Args:
+        db: Active database session
+        slug: Slug name to search for
+        
+    Returns:
+        Optional[PaperSlugRecord]: Slug record if found, None otherwise
+    """
+    return db.query(PaperSlugRecord).filter(PaperSlugRecord.slug == slug).first()
+
+
+def create_paper_slug_record(db: Session, slug: str, paper_uuid: str) -> PaperSlugRecord:
+    """
+    Create a new paper slug record in the database.
+    
+    Args:
+        db: Active database session
+        slug: URL-safe slug string
+        paper_uuid: UUID of the paper this slug belongs to
+        
+    Returns:
+        PaperSlugRecord: Created slug record
+    """
+    new_slug_record = PaperSlugRecord(
+        slug=slug,
+        paper_uuid=paper_uuid,
+        tombstone=False,
+        created_at=datetime.utcnow()
+    )
+    db.add(new_slug_record)
+    db.commit()
+    return new_slug_record
