@@ -15,8 +15,7 @@ from sqlalchemy.orm import Session
 from papers.models import Paper, PaperSlug, Page, Section
 from papers.db.client import (
     get_paper_record, create_paper_record, update_paper_record, list_paper_records, 
-    paper_record_to_paper, get_paper_slugs, get_all_paper_slugs, tombstone_paper_slugs,
-    paper_slug_record_to_paper_slug
+    get_paper_slugs, get_all_paper_slugs, tombstone_paper_slugs
 )
 from papers.db.models import PaperRecord, PaperSlugRecord
 from paperprocessor.models import ProcessedDocument
@@ -84,7 +83,7 @@ def build_paper_slug(title: Optional[str], authors: Optional[str]) -> str:
 
 def list_papers(db: Session, statuses: Optional[List[str]], limit: int) -> List[Paper]:
     records = list_paper_records(db, statuses, limit)
-    return [paper_record_to_paper(record) for record in records]
+    return [Paper.model_validate(record) for record in records]
 
 
 def _paperjsons_dir() -> str:
@@ -154,7 +153,7 @@ def list_minimal_papers(db: Session) -> List[Dict[str, Any]]:
 
     # Merge slug mapping (latest non-tombstone per paper_uuid)
     slug_records = get_all_paper_slugs(db, non_tombstone_only=True)
-    slug_dtos = [paper_slug_record_to_paper_slug(record) for record in slug_records]
+    slug_dtos = [PaperSlug.model_validate(record) for record in slug_records]
     latest_by_uuid: Dict[str, Dict[str, Any]] = {}
     for slug_dto in slug_dtos:
         puid = slug_dto.paper_uuid
@@ -284,28 +283,26 @@ def save_paper(db: Session, processed_content: ProcessedDocument) -> Paper:
         _json.dump(result_dict, f, ensure_ascii=False)
     os.replace(tmp_path, json_path)
     
-    # Step 4: Create or update Paper using clean database operations
-    paper = Paper(
-        paper_uuid=paper_uuid,
-        arxiv_id=arxiv_id,
-        title=processed_content.title,
-        authors=processed_content.authors,
-        status='completed',
-        num_pages=len(processed_content.pages),
-        total_cost=result_dict["total_cost"],
-        avg_cost_per_page=result_dict["avg_cost_per_page"],
-        thumbnail_data_url=result_dict["thumbnail_data_url"],
-        finished_at=datetime.utcnow(),
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow()
-    )
+    # Step 4: Create or update paper record in database
+    paper_data = {
+        'paper_uuid': paper_uuid,
+        'arxiv_id': arxiv_id,
+        'title': processed_content.title,
+        'authors': processed_content.authors,
+        'status': 'completed',
+        'num_pages': len(processed_content.pages),
+        'total_cost': result_dict["total_cost"],
+        'avg_cost_per_page': result_dict["avg_cost_per_page"],
+        'thumbnail_data_url': result_dict["thumbnail_data_url"],
+        'finished_at': datetime.utcnow(),
+    }
     
     if is_update:
-        update_paper_record(db, paper)
+        record = update_paper_record(db, paper_uuid, paper_data)
     else:
-        create_paper_record(db, paper)
+        record = create_paper_record(db, paper_data)
     
-    return paper
+    return Paper.model_validate(record)
 
 
 def get_paper_metadata(db: Session, paper_uuid: str) -> Paper:
@@ -319,7 +316,7 @@ def get_paper_metadata(db: Session, paper_uuid: str) -> Paper:
         FileNotFoundError: If paper with UUID not found
     """
     record = get_paper_record(db, paper_uuid)
-    return paper_record_to_paper(record)
+    return Paper.model_validate(record)
 
 
 def get_paper(db: Session, paper_uuid: str) -> Paper:

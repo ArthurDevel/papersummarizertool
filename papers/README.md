@@ -4,7 +4,7 @@ This module handles paper storage, retrieval, and management. It provides a clea
 
 ## models.py
 
-Contains all Data Transfer Objects (DTOs) used throughout the papers module:
+Contains all Data Transfer Objects (DTOs) built with Pydantic for automatic validation and ORM conversion:
 
 - **Paper** - Main paper DTO containing metadata and full content (pages, sections)
 - **Page** - Simple page model with image data
@@ -13,7 +13,40 @@ Contains all Data Transfer Objects (DTOs) used throughout the papers module:
 
 See [models.py](./models.py) for complete DTO definitions and field details.
 
+### DTO ↔ Database Model Conversion
+
 **Database Models:** SQLAlchemy models are separate in [db/models.py](./db/models.py) - these handle database persistence while DTOs handle business logic.
+
+**Automatic Conversion:** Pydantic DTOs automatically convert from SQLAlchemy models using `model_validate()`:
+
+```python
+# Convert SQLAlchemy record to DTO (automatic field mapping)
+record = get_paper_record(db, paper_uuid)
+paper = Paper.model_validate(record)
+
+# Convert list of records to DTOs
+records = list_paper_records(db, statuses=['completed'], limit=10)
+papers = [Paper.model_validate(record) for record in records]
+```
+
+**Built-in Functions:**
+- `Paper.model_validate(record)` - Convert from SQLAlchemy model or dict
+- `paper.to_orm()` - Convert to SQLAlchemy model for database operations
+- `paper.model_dump()` - Convert to dict for JSON serialization
+- `paper.model_dump_json()` - Convert directly to JSON string
+- Automatic validation and type coercion on all field assignments
+
+**Bidirectional Conversion:**
+```python
+# SQLAlchemy → DTO (automatic field mapping)
+record = get_paper_record(db, paper_uuid)
+paper = Paper.model_validate(record)
+
+# DTO → SQLAlchemy (for database writes)
+paper = Paper(paper_uuid="123", arxiv_id="456", title="Test")
+record = paper.to_orm()
+db.add(record)
+```
 
 ## client.py
 

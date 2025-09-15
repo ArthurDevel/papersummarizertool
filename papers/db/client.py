@@ -6,118 +6,76 @@ from typing import List, Optional
 from sqlalchemy.orm import Session
 
 from papers.db.models import PaperRecord, PaperSlugRecord
-from papers.models import Paper, PaperSlug
 
 
-def paper_slug_record_to_paper_slug(record: PaperSlugRecord) -> PaperSlug:
-    """Convert PaperSlugRecord to PaperSlug DTO."""
-    from papers.models import PaperSlug
-    return PaperSlug(
-        slug=record.slug,
-        paper_uuid=record.paper_uuid,
-        created_at=record.created_at,
-        tombstone=record.tombstone,
-        deleted_at=record.deleted_at
-    )
-
-def paper_record_to_paper(record: PaperRecord) -> Paper:
-    """Convert PaperRecord to Paper DTO."""
-    return Paper(
-        paper_uuid=record.paper_uuid,
-        arxiv_id=record.arxiv_id,
-        title=record.title,
-        authors=record.authors,
-        status=record.status,
-        arxiv_version=record.arxiv_version,
-        arxiv_url=record.arxiv_url,
-        error_message=record.error_message,
-        initiated_by_user_id=record.initiated_by_user_id,
-        created_at=record.created_at,
-        updated_at=record.updated_at,
-        started_at=record.started_at,
-        finished_at=record.finished_at,
-        num_pages=record.num_pages,
-        processing_time_seconds=record.processing_time_seconds,
-        total_cost=record.total_cost,
-        avg_cost_per_page=record.avg_cost_per_page,
-        thumbnail_data_url=record.thumbnail_data_url,
-    )
-
-
-def paper_slug_record_to_paper_slug(record: PaperSlugRecord) -> PaperSlug:
-    """Convert PaperSlugRecord to PaperSlug DTO."""
-    return PaperSlug(
-        slug=record.slug,
-        paper_uuid=record.paper_uuid,
-        created_at=record.created_at,
-        tombstone=record.tombstone,
-        deleted_at=record.deleted_at,
-    )
 
 
 ### DATABASE OPERATIONS ###
 
-def get_paper_record(db: Session, paper_uuid: str) -> PaperRecord:
+def get_paper_record(db: Session, paper_uuid: str, by_arxiv_id: bool = False) -> PaperRecord:
     """
     Get paper record from database.
+    
+    Args:
+        db: Database session
+        paper_uuid: Paper UUID or arXiv ID
+        by_arxiv_id: If True, search by arXiv ID instead of UUID
     
     Raises:
         FileNotFoundError: If paper not found
     """
-    record = db.query(PaperRecord).filter(PaperRecord.paper_uuid == str(paper_uuid)).first()
-    if not record:
-        raise FileNotFoundError(f"Paper with UUID {paper_uuid} not found")
+    if by_arxiv_id:
+        record = db.query(PaperRecord).filter(PaperRecord.arxiv_id == str(paper_uuid)).first()
+        if not record:
+            raise FileNotFoundError(f"Paper with arXiv ID {paper_uuid} not found")
+    else:
+        record = db.query(PaperRecord).filter(PaperRecord.paper_uuid == str(paper_uuid)).first()
+        if not record:
+            raise FileNotFoundError(f"Paper with UUID {paper_uuid} not found")
     return record
 
 
-def create_paper_record(db: Session, paper: Paper) -> PaperRecord:
-    """Create new paper record in database."""
-    record = PaperRecord(
-        paper_uuid=paper.paper_uuid,
-        arxiv_id=paper.arxiv_id,
-        title=paper.title,
-        authors=paper.authors,
-        status=paper.status,
-        arxiv_version=paper.arxiv_version,
-        arxiv_url=paper.arxiv_url,
-        error_message=paper.error_message,
-        initiated_by_user_id=paper.initiated_by_user_id,
-        created_at=paper.created_at or datetime.utcnow(),
-        updated_at=paper.updated_at or datetime.utcnow(),
-        started_at=paper.started_at,
-        finished_at=paper.finished_at,
-        num_pages=paper.num_pages,
-        processing_time_seconds=paper.processing_time_seconds,
-        total_cost=paper.total_cost,
-        avg_cost_per_page=paper.avg_cost_per_page,
-        thumbnail_data_url=paper.thumbnail_data_url,
-    )
+def create_paper_record(db: Session, paper_data) -> PaperRecord:
+    """Create new paper record in database from dict or Paper DTO."""
+    from papers.models import Paper
+    
+    if isinstance(paper_data, Paper):
+        record = paper_data.to_orm()
+    else:
+        # Set default timestamps if not provided
+        now = datetime.utcnow()
+        paper_data.setdefault('created_at', now)
+        paper_data.setdefault('updated_at', now)
+        record = PaperRecord(**paper_data)
+    
     db.add(record)
     db.commit()
     return record
 
 
-def update_paper_record(db: Session, paper: Paper) -> PaperRecord:
-    """Update existing paper record in database."""
-    record = get_paper_record(db, paper.paper_uuid)
+def update_paper_record(db: Session, paper_uuid: str, paper_data) -> PaperRecord:
+    """Update existing paper record in database from dict or Paper DTO."""
+    from papers.models import Paper
     
-    record.title = paper.title
-    record.authors = paper.authors
-    record.status = paper.status
-    record.arxiv_version = paper.arxiv_version
-    record.arxiv_url = paper.arxiv_url
-    record.error_message = paper.error_message
-    record.initiated_by_user_id = paper.initiated_by_user_id
-    record.updated_at = paper.updated_at or datetime.utcnow()
-    record.started_at = paper.started_at
-    record.finished_at = paper.finished_at
-    record.num_pages = paper.num_pages
-    record.processing_time_seconds = paper.processing_time_seconds
-    record.total_cost = paper.total_cost
-    record.avg_cost_per_page = paper.avg_cost_per_page
-    record.thumbnail_data_url = paper.thumbnail_data_url
+    record = get_paper_record(db, paper_uuid)
     
-    db.add(record)
+    if isinstance(paper_data, Paper):
+        # Update all fields from DTO
+        updated_record = paper_data.to_orm()
+        updated_record.id = record.id  # Preserve database ID
+        updated_record.updated_at = datetime.utcnow()
+        
+        db.merge(updated_record)
+    else:
+        # Update provided fields from dict
+        for key, value in paper_data.items():
+            if hasattr(record, key):
+                setattr(record, key, value)
+        
+        # Always update timestamp
+        record.updated_at = datetime.utcnow()
+        db.add(record)
+    
     db.commit()
     return record
 
