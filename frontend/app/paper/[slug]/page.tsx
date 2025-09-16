@@ -235,57 +235,89 @@ export default function LayoutTestsPage() {
 
   
 
-  const renderRewrittenSectionContent = (section: Section) => (
-    <div key={section.section_title} className="prose dark:prose-invert max-w-none mb-6 last:mb-0">
-      {!section.rewritten_content && section.level === 1 && (
-        <h4 className="font-semibold">{section.section_title} (p. {section.start_page}-{section.end_page})</h4>
-      )}
-      {section.rewritten_content && (
-        <div className="mt-2">
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm, remarkMath]}
-            rehypePlugins={[[rehypeKatex, { strict: false, throwOnError: false }]]}
-          >
-            {preprocessBacktickedMath(section.rewritten_content || '')}
-          </ReactMarkdown>
-        </div>
-      )}
-    </div>
-  );
+  // Note: processInlineImages function removed - backend now generates proper markdown images
+  // Images now come as: ![Figure shortid](shortid:weu33j4l)
+  // Future: Backend can add descriptions like: ![Figure shortid](shortid:weu33j4l "Custom description")
 
-  const assetBelongsToSection = (
-    startPage: number,
-    endPage: number,
-    locationPage: number,
-    referencedOnPages: number[]
-  ) => {
-    const inRange = (p: number) => p >= startPage && p <= endPage;
-    if (inRange(locationPage)) return true;
-    if (Array.isArray(referencedOnPages)) {
-      return referencedOnPages.some((p) => inRange(p));
-    }
-    return false;
+  const renderRewrittenSectionContent = (section: Section) => {
+    const figures = paperData?.figures || [];
+    
+    return (
+      <div key={section.section_title} className="prose dark:prose-invert max-w-none mb-6 last:mb-0">
+        {!section.rewritten_content && section.level === 1 && (
+          <h4 className="font-semibold">{section.section_title} (p. {section.start_page}-{section.end_page})</h4>
+        )}
+        {section.rewritten_content && (
+          <div className="mt-2">
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm, remarkMath]}
+              rehypePlugins={[[rehypeKatex, { strict: false, throwOnError: false }]]}
+              urlTransform={(url) => {
+                // Allow our custom shortid: scheme to pass through
+                if (url.startsWith('shortid:')) {
+                  return url;
+                }
+                // Use default transformation for other URLs
+                return url;
+              }}
+              components={{
+                img: ({ src, alt, title, ...props }) => {
+                  // Handle shortid: URLs from backend
+                  if (src?.startsWith('shortid:')) {
+                    const shortId = src.replace('shortid:', '');
+                    const figure = figures.find(f => f.short_id === shortId);
+                    
+                    if (!figure) {
+                      return <span className="text-red-500">[Image {shortId} not found]</span>;
+                    }
+                    
+                    // Use title as description, alt as fallback
+                    const description = title || alt || figure.explanation || `Figure ${shortId}`;
+                    
+                    return (
+                      <img
+                        src={figure.image_data_url}
+                        alt={description}
+                        title={description}
+                        className="inline-block max-w-full h-auto my-2 mx-auto border border-gray-300 rounded shadow-sm cursor-pointer"
+                        onClick={() => {
+                          setModalData({ kind: 'figure', data: figure });
+                          setIsModalOpen(true);
+                        }}
+                      />
+                    );
+                  }
+                  
+                  // Handle regular images - filter out React node props
+                  const { node, children, ...safeProps } = props;
+                  return (
+                    <img
+                      src={src}
+                      alt={alt}
+                      title={title}
+                      {...safeProps}
+                      className="inline-block max-w-full h-auto my-2 mx-auto border border-gray-300 rounded shadow-sm cursor-pointer"
+                      onClick={() => {
+                        // Find figure by src to open modal
+                        const figure = figures.find(f => f.image_data_url === src);
+                        if (figure) {
+                          setModalData({ kind: 'figure', data: figure });
+                          setIsModalOpen(true);
+                        }
+                      }}
+                    />
+                  );
+                },
+              }}
+            >
+              {preprocessBacktickedMath(section.rewritten_content || '')}
+            </ReactMarkdown>
+          </div>
+        )}
+      </div>
+    );
   };
 
-  const getAssetsForSection = (section: Section, figures: Figure[], tables: Table[]) => {
-    const sectStart = section.start_page ?? Number.MIN_SAFE_INTEGER;
-    const sectEnd = section.end_page ?? Number.MAX_SAFE_INTEGER;
-    const sectionFigures = (figures || []).filter((f) =>
-      assetBelongsToSection(sectStart, sectEnd, f.location_page, f.referenced_on_pages)
-    );
-    const sectionTables = (tables || []).filter((t) =>
-      assetBelongsToSection(sectStart, sectEnd, t.location_page, t.referenced_on_pages)
-    );
-    const byPageThenId = <T extends { location_page: number; [k: string]: any }>(a: T, b: T) => {
-      if (a.location_page !== b.location_page) return a.location_page - b.location_page;
-      const aId = (a.figure_identifier || a.table_identifier || '').toString();
-      const bId = (b.figure_identifier || b.table_identifier || '').toString();
-      return aId.localeCompare(bId);
-    };
-    sectionFigures.sort(byPageThenId);
-    sectionTables.sort(byPageThenId);
-    return { sectionFigures, sectionTables };
-  };
 
   useEffect(() => {
     if (!isModalOpen || !paperData || !modalData) return;
@@ -462,11 +494,6 @@ export default function LayoutTestsPage() {
             <div className="flex flex-col space-y-6 flex-grow">
               {paperData.sections.map((section: Section, idx: number) => {
                 const sectionId = `sec-${idx}`;
-                const { sectionFigures, sectionTables } = getAssetsForSection(
-                  section,
-                  paperData.figures || [],
-                  paperData.tables || []
-                );
 
                 return (
                   <div
@@ -475,104 +502,6 @@ export default function LayoutTestsPage() {
                     className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-md overflow-hidden p-4"
                   >
                     {renderRewrittenSectionContent(section)}
-
-                    {(sectionFigures.length > 0 || sectionTables.length > 0) && (
-                      <div className="mt-6 space-y-6">
-                        {sectionFigures.length > 0 && (
-                          <div className="space-y-3">
-                            <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Figures</h4>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                              {sectionFigures.map((figure: Figure, fIdx: number) => {
-                                const cardKey = `${figure.figure_identifier}-${figure.location_page}-${fIdx}`;
-                                const raw = figure.explanation || '';
-                                const MAX_PREVIEW_CHARS = 300;
-                                const isTruncated = raw.length > MAX_PREVIEW_CHARS;
-                                const preview = isTruncated ? (raw.slice(0, MAX_PREVIEW_CHARS).trimEnd() + '…') : raw;
-                                return (
-                                <div key={cardKey} className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 border border-gray-200 dark:border-gray-700 flex flex-col">
-                                  <div className="bg-gray-200 dark:bg-gray-600 h-48 rounded-md mb-4 flex items-center justify-center overflow-hidden">
-                                    {figure.image_data_url ? (
-                                      <img
-                                        src={figure.image_data_url}
-                                        alt={figure.figure_identifier}
-                                        className="object-contain h-48 w-full cursor-zoom-in"
-                                        onClick={() => openAssetModal({ kind: 'figure', data: figure })}
-                                      />
-                                    ) : (
-                                      <span className="text-gray-500 dark:text-gray-400 text-center p-2">{figure.figure_identifier}</span>
-                                    )}
-                                  </div>
-                                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">p. {figure.location_page}</p>
-                                  <div className="relative">
-                                    <div
-                                      className="prose dark:prose-invert max-w-none text-sm cursor-pointer"
-                                      onClick={() => openAssetModal({ kind: 'figure', data: figure })}
-                                    >
-                                      <ReactMarkdown
-                                        remarkPlugins={[remarkGfm, remarkMath]}
-                                        rehypePlugins={[[rehypeKatex, { strict: false, throwOnError: false }]]}
-                                      >
-                                        {preprocessBacktickedMath(preview)}
-                                      </ReactMarkdown>
-                                    </div>
-                                    {isTruncated && (
-                                      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-white dark:from-gray-900 to-transparent" />
-                                    )}
-                                  </div>
-                                </div>
-                              );})}
-                            </div>
-                          </div>
-                        )}
-
-                        {sectionTables.length > 0 && (
-                          <div className="space-y-3">
-                            <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Tables</h4>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                              {sectionTables.map((table: Table, tIdx: number) => {
-                                const cardKey = `${table.table_identifier}-${table.location_page}-${tIdx}`;
-                                const raw = table.explanation || '';
-                                const MAX_PREVIEW_CHARS = 300;
-                                const isTruncated = raw.length > MAX_PREVIEW_CHARS;
-                                const preview = isTruncated ? (raw.slice(0, MAX_PREVIEW_CHARS).trimEnd() + '…') : raw;
-                                return (
-                                <div key={cardKey} className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 border border-gray-200 dark:border-gray-700 flex flex-col">
-                                  <div className="bg-gray-200 dark:bg-gray-600 h-48 rounded-md mb-4 flex items-center justify-center overflow-hidden">
-                                    {table.image_data_url ? (
-                                      <img
-                                        src={table.image_data_url}
-                                        alt={table.table_identifier}
-                                        className="object-contain h-48 w-full cursor-zoom-in"
-                                        onClick={() => openAssetModal({ kind: 'table', data: table })}
-                                      />
-                                    ) : (
-                                      <span className="text-gray-500 dark:text-gray-400 text-center p-2">{table.table_identifier}</span>
-                                    )}
-                                  </div>
-                                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">p. {table.location_page}</p>
-                                  <div className="relative">
-                                    <div
-                                      className="prose dark:prose-invert max-w-none text-sm cursor-pointer"
-                                      onClick={() => openAssetModal({ kind: 'table', data: table })}
-                                    >
-                                      <ReactMarkdown
-                                        remarkPlugins={[remarkGfm, remarkMath]}
-                                        rehypePlugins={[[rehypeKatex, { strict: false, throwOnError: false }]]}
-                                      >
-                                        {preprocessBacktickedMath(preview)}
-                                      </ReactMarkdown>
-                                    </div>
-                                    {isTruncated && (
-                                      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-white dark:from-gray-900 to-transparent" />
-                                    )}
-                                  </div>
-                                </div>
-                              );})}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
                   </div>
                 );
               })}

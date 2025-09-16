@@ -16,6 +16,12 @@ class Section(BaseModel):
     """Simple section model for papers."""
     order_index: int
     rewritten_content: str
+    start_page: Optional[int] = None
+    end_page: Optional[int] = None
+    level: Optional[int] = None
+    section_title: Optional[str] = None
+    summary: Optional[str] = None
+    subsections: List["Section"] = Field(default_factory=list)
 
 
 class PaperSlug(BaseModel):

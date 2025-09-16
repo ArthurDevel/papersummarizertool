@@ -319,6 +319,7 @@ def save_paper(db: Session, processed_content: ProcessedDocument) -> Paper:
         for processed_image in page.images:
             result_dict["figures"].append({
                 "figure_identifier": processed_image.uuid,
+                "short_id": processed_image.short_id,
                 "location_page": processed_image.page_number,
                 "explanation": "",  # Not extracted in current pipeline
                 "image_path": "",   # Not used - we store base64 directly
@@ -330,8 +331,7 @@ def save_paper(db: Session, processed_content: ProcessedDocument) -> Paper:
                     processed_image.bottom_right_x,
                     processed_image.bottom_right_y
                 ],
-                # TODO: Add page dimensions to ProcessedPage model to get actual size
-                "page_image_size": None  # Unknown - not stored in ProcessedPage
+                "page_image_size": [page.width, page.height]
             })
     
     # Set thumbnail from first page
@@ -340,9 +340,22 @@ def save_paper(db: Session, processed_content: ProcessedDocument) -> Paper:
     
     # Convert sections to legacy format
     for section in processed_content.sections:
-        result_dict["sections"].append({
+        section_data = {
             "rewritten_content": section.rewritten_content,
-        })
+            "summary": None,  # Not populated in current pipeline
+            "subsections": []  # Flat structure for now
+        }
+        # Only include fields that are actually set
+        if section.start_page is not None:
+            section_data["start_page"] = section.start_page
+        if section.end_page is not None:
+            section_data["end_page"] = section.end_page
+        if section.level is not None:
+            section_data["level"] = section.level
+        if section.section_title is not None:
+            section_data["section_title"] = section.section_title
+        
+        result_dict["sections"].append(section_data)
     
     # Calculate usage summary and costs
     from paperprocessor.client import _calculate_usage_summary
@@ -444,7 +457,13 @@ def get_paper(db: Session, paper_uuid: str) -> Paper:
     for idx, section_data in enumerate(result_dict.get("sections", [])):
         section = Section(
             order_index=idx,
-            rewritten_content=section_data.get("rewritten_content", "")
+            rewritten_content=section_data["rewritten_content"],  # Required field - fail if missing
+            start_page=section_data.get("start_page"),  # Optional - None if missing
+            end_page=section_data.get("end_page"),  # Optional - None if missing
+            level=section_data.get("level"),  # Optional - None if missing
+            section_title=section_data.get("section_title"),  # Optional - None if missing
+            summary=section_data.get("summary"),  # Optional - None if missing
+            subsections=section_data.get("subsections", [])  # Default to empty list for this one
         )
         sections.append(section)
     

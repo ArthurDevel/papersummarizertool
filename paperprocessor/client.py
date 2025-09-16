@@ -11,7 +11,7 @@ from paperprocessor.internals.pdf_to_image import convert_pdf_to_images
 from paperprocessor.internals.mistral_ocr import extract_markdown_from_pages
 from paperprocessor.internals.metadata_extractor import extract_metadata
 from paperprocessor.internals.structure_extractor import extract_structure
-from paperprocessor.internals.header_formatter import format_headers
+from paperprocessor.internals.header_formatter import format_headers, format_images
 from paperprocessor.internals.section_rewriter import rewrite_sections
 from shared.db import SessionLocal
 from papers.client import get_paper_metadata, get_processed_result_path
@@ -179,7 +179,9 @@ async def process_paper_pdf(pdf_contents: bytes, paper_id: Optional[str] = None)
             
             page = ProcessedPage(
                 page_number=page_num,
-                img_base64=img_base64
+                img_base64=img_base64,
+                width=image.width,
+                height=image.height
             )
             pages.append(page)
         
@@ -203,6 +205,10 @@ async def process_paper_pdf(pdf_contents: bytes, paper_id: Optional[str] = None)
         # Step 4: Format headers to # levels - modifies document in place
         logger.info("Step 4: Formatting headers.")
         await format_headers(document)
+        
+        # Step 4b: Format inline image references - modifies document in place
+        logger.info("Step 4b: Formatting inline image references.")
+        await format_images(document)
         
         # Step 5: Rewrite sections - modifies document in place
         logger.info("Step 5: Rewriting sections.")

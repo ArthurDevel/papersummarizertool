@@ -1,5 +1,6 @@
 export interface Figure {
   figure_identifier: string;
+  short_id?: string;
   location_page: number;
   explanation: string;
   image_path: string;
