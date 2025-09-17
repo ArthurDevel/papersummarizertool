@@ -296,6 +296,7 @@ def save_paper(db: Session, processed_content: ProcessedDocument) -> Paper:
         "title": processed_content.title,
         "authors": processed_content.authors,
         "thumbnail_data_url": None,  # Will be set from first page
+        "five_minute_summary": processed_content.five_minute_summary,
         "sections": [],
         "tables": [],
         "figures": [],

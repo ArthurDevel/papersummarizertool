@@ -491,6 +491,31 @@ export default function LayoutTestsPage() {
               </div>
             </div>
 
+            {/* 5-Minute Summary */}
+            {paperData.five_minute_summary && (
+              <div className="mb-4 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg shadow-md overflow-hidden">
+                <div className="p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                    <h2 className="text-lg font-semibold text-blue-900 dark:text-blue-100">
+                      5-Minute Summary
+                    </h2>
+                    <span className="text-xs text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-900/50 px-2 py-1 rounded-full">
+                      ⚡ Quick read
+                    </span>
+                  </div>
+                  <div className="prose dark:prose-invert max-w-none">
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm, remarkMath]}
+                      rehypePlugins={[[rehypeKatex, { strict: false, throwOnError: false }]]}
+                    >
+                      {preprocessBacktickedMath(paperData.five_minute_summary)}
+                    </ReactMarkdown>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="flex flex-col space-y-6 flex-grow">
               {paperData.sections.map((section: Section, idx: number) => {
                 const sectionId = `sec-${idx}`;
