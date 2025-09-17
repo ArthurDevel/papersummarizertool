@@ -6,7 +6,7 @@ import json
 from typing import List, Tuple
 
 from shared.openrouter import client as openrouter_client
-from paperprocessor.models import ProcessedDocument, Section, ApiCallCostForStep
+from paperprocessor.models import ProcessedDocument, Section, ApiCallCostForStep, Header
 
 logger = logging.getLogger(__name__)
 
@@ -110,14 +110,51 @@ def _slice_text(content: str, start: int, end: int) -> str:
     return content[start:end]
 
 
-def _build_flat_sections(final_markdown: str, spans: List[Tuple[int, int]]) -> List[Section]:
+def _build_flat_sections(final_markdown: str, spans: List[Tuple[int, int]], document_headers: List[Header]) -> List[Section]:
     """
     Build a flat list of Section objects from spans in document order.
+    Extracts page range and header information for each section.
+    Fails if sections exist but headers are missing.
     """
     sections: List[Section] = []
+    
+    # Get section headers (those that create section tags)
+    section_headers = [h for h in document_headers if h.element_type in ['document_section', 'document_section_references']]
+    
+    # If we have sections but no headers, fail fast
+    if spans and not section_headers:
+        raise RuntimeError("Sections found but no section headers available - data inconsistency")
+    
     for i, (start, end) in enumerate(spans):
         original = _slice_text(final_markdown, start, end)
-        sections.append(Section(order_index=i, original_content=original))
+        
+        # Find the header for this section - must exist
+        if i >= len(section_headers):
+            raise RuntimeError(f"Section {i} found but no corresponding header available")
+        
+        header = section_headers[i]
+        start_page = header.page_number
+        level = header.level  
+        section_title = header.text
+        
+        # Determine end page - look at next section's start page
+        if i + 1 < len(section_headers):
+            end_page = section_headers[i + 1].page_number - 1
+        else:
+            end_page = start_page  # Last section ends on its own page
+        
+        # Ensure end_page is at least start_page
+        end_page = max(start_page, end_page)
+        
+        sections.append(Section(
+            order_index=i, 
+            original_content=original,
+            start_page=start_page,
+            end_page=end_page,
+            level=level,
+            section_title=section_title
+        ))
+    
     return sections
 
 
@@ -203,7 +240,7 @@ async def rewrite_sections(document: ProcessedDocument) -> None:
     spans = _find_section_spans(document.final_markdown)
 
     # 2) Build flat sections
-    sections = _build_flat_sections(document.final_markdown, spans)
+    sections = _build_flat_sections(document.final_markdown, spans, document.headers)
     
     # 3) Rewrite each section in parallel
     # 3a) Create tasks for all sections

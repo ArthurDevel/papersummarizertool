@@ -55,5 +55,5 @@ ocr_output.txt
 data/
 
 # Notebook outputs
-paperprocessor_v2/notebooks/outputs/
-paperprocessor_v2/debugging_output/
+paperprocessor/debugging_output/
+paperprocessor/notebooks/outputs/

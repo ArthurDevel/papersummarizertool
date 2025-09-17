@@ -14,6 +14,7 @@ class ProcessedImage:
     bottom_right_x: int        # bounding box bottom-right x coordinate
     bottom_right_y: int        # bounding box bottom-right y coordinate
     uuid: str = field(default_factory=lambda: str(uuid.uuid4()))  # uuid4 field, used to reference the image
+    short_id: Optional[str] = None  # 8-character Base36 ID for markdown references
 
 
 @dataclass
@@ -29,6 +30,8 @@ class Header:
 class ProcessedPage:
     page_number: int
     img_base64: str             # Base64 encoded page image, max width 1080px
+    width: int                  # Page image width in pixels
+    height: int                 # Page image height in pixels
     ocr_markdown: Optional[str] = None      # Raw OCR markdown
     structured_markdown: Optional[str] = None    # With << tags >>
     images: List[ProcessedImage] = field(default_factory=list)     # Images on this page
@@ -45,6 +48,8 @@ class ApiCallCostForStep:
 @dataclass
 class ProcessedDocument:
     pdf_base64: str            # base64 encoded version of the pdf
+    paper_uuid: Optional[str] = None    # If set, overwrite existing paper
+    arxiv_id: Optional[str] = None      # ArXiv ID for duplicate checking
     title: Optional[str] = None
     authors: Optional[str] = None
     pages: List[ProcessedPage] = field(default_factory=list)
@@ -68,8 +73,16 @@ class Section:
     order_index: Position in document order starting at 0
     original_content: Original markdown content for this section (between tags)
     rewritten_content: Rewritten markdown content for this section
+    start_page: First page number where this section appears (only set if header found)
+    end_page: Last page number where this section appears (only set if header found)
+    level: Header level (1, 2, 3, etc.) (only set if header found)
+    section_title: Title text of the section header (only set if header found)
     """
     order_index: int
     original_content: str
     rewritten_content: Optional[str] = None
+    start_page: Optional[int] = None
+    end_page: Optional[int] = None
+    level: Optional[int] = None
+    section_title: Optional[str] = None
  

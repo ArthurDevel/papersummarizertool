@@ -11,10 +11,10 @@ from paperprocessor.internals.pdf_to_image import convert_pdf_to_images
 from paperprocessor.internals.mistral_ocr import extract_markdown_from_pages
 from paperprocessor.internals.metadata_extractor import extract_metadata
 from paperprocessor.internals.structure_extractor import extract_structure
-from paperprocessor.internals.header_formatter import format_headers
+from paperprocessor.internals.header_formatter import format_headers, format_images
 from paperprocessor.internals.section_rewriter import rewrite_sections
 from shared.db import SessionLocal
-from papers.models import PaperRow
+from papers.client import get_paper_metadata, get_processed_result_path
 
 logger = logging.getLogger(__name__)
 
@@ -78,13 +78,6 @@ def _calculate_usage_summary(step_costs: List[ApiCallCostForStep]) -> Dict[str, 
     }
 
 
-def get_processed_result_path(paper_uuid: str) -> str:
-    """
-    Return absolute filesystem path for the stored processed result JSON for a paper.
-    Directory is controlled by env PAPER_JSON_DIR (default: data/paperjsons/).
-    """
-    base_dir = os.path.abspath(os.environ.get("PAPER_JSON_DIR", os.path.join(os.getcwd(), 'data', 'paperjsons')))
-    return os.path.join(base_dir, f"{paper_uuid}.json")
 
 
 def _load_usage_summary_from_json(paper_uuid: str) -> Optional[Dict[str, Any]]:
@@ -108,24 +101,22 @@ def get_processing_metrics_for_user(paper_uuid: str, auth_provider_id: str) -> D
     """
     session = SessionLocal()
     try:
-        row: PaperRow | None = session.query(PaperRow).filter(PaperRow.paper_uuid == str(paper_uuid)).first()
-        if not row:
-            raise FileNotFoundError("Paper not found")
-        if row.status != 'completed':
+        paper = get_paper_metadata(session, paper_uuid)
+        if paper.status != 'completed':
             raise RuntimeError("Paper not completed")
-        if not row.initiated_by_user_id or row.initiated_by_user_id != auth_provider_id:
+        if not paper.initiated_by_user_id or paper.initiated_by_user_id != auth_provider_id:
             raise PermissionError("Not authorized to view metrics for this paper")
-        usage_summary = _load_usage_summary_from_json(row.paper_uuid)
+        usage_summary = _load_usage_summary_from_json(paper.paper_uuid)
         return {
-            "paper_uuid": row.paper_uuid,
-            "status": row.status,
-            "created_at": row.created_at,
-            "started_at": row.started_at,
-            "finished_at": row.finished_at,
-            "num_pages": row.num_pages,
-            "processing_time_seconds": row.processing_time_seconds,
-            "total_cost": row.total_cost,
-            "avg_cost_per_page": row.avg_cost_per_page,
+            "paper_uuid": paper.paper_uuid,
+            "status": paper.status,
+            "created_at": paper.created_at,
+            "started_at": paper.started_at,
+            "finished_at": paper.finished_at,
+            "num_pages": paper.num_pages,
+            "processing_time_seconds": paper.processing_time_seconds,
+            "total_cost": paper.total_cost,
+            "avg_cost_per_page": paper.avg_cost_per_page,
             "usage_summary": usage_summary,
         }
     finally:
@@ -138,24 +129,22 @@ def get_processing_metrics_for_admin(paper_uuid: str) -> Dict[str, Any]:
     """
     session = SessionLocal()
     try:
-        row: PaperRow | None = session.query(PaperRow).filter(PaperRow.paper_uuid == str(paper_uuid)).first()
-        if not row:
-            raise FileNotFoundError("Paper not found")
-        if row.status != 'completed':
+        paper = get_paper_metadata(session, paper_uuid)
+        if paper.status != 'completed':
             raise RuntimeError("Paper not completed")
-        usage_summary = _load_usage_summary_from_json(row.paper_uuid)
+        usage_summary = _load_usage_summary_from_json(paper.paper_uuid)
         return {
-            "paper_uuid": row.paper_uuid,
-            "status": row.status,
-            "created_at": row.created_at,
-            "started_at": row.started_at,
-            "finished_at": row.finished_at,
-            "num_pages": row.num_pages,
-            "processing_time_seconds": row.processing_time_seconds,
-            "total_cost": row.total_cost,
-            "avg_cost_per_page": row.avg_cost_per_page,
+            "paper_uuid": paper.paper_uuid,
+            "status": paper.status,
+            "created_at": paper.created_at,
+            "started_at": paper.started_at,
+            "finished_at": paper.finished_at,
+            "num_pages": paper.num_pages,
+            "processing_time_seconds": paper.processing_time_seconds,
+            "total_cost": paper.total_cost,
+            "avg_cost_per_page": paper.avg_cost_per_page,
             "usage_summary": usage_summary,
-            "initiated_by_user_id": row.initiated_by_user_id,
+            "initiated_by_user_id": paper.initiated_by_user_id,
         }
     finally:
         session.close()
@@ -190,7 +179,9 @@ async def process_paper_pdf(pdf_contents: bytes, paper_id: Optional[str] = None)
             
             page = ProcessedPage(
                 page_number=page_num,
-                img_base64=img_base64
+                img_base64=img_base64,
+                width=image.width,
+                height=image.height
             )
             pages.append(page)
         
@@ -215,71 +206,13 @@ async def process_paper_pdf(pdf_contents: bytes, paper_id: Optional[str] = None)
         logger.info("Step 4: Formatting headers.")
         await format_headers(document)
         
+        # Step 4b: Format inline image references - modifies document in place
+        logger.info("Step 4b: Formatting inline image references.")
+        await format_images(document)
+        
         # Step 5: Rewrite sections - modifies document in place
         logger.info("Step 5: Rewriting sections.")
         await rewrite_sections(document)
         
         logger.info("Paper processing pipeline v2 finished.")
         return document
-
-
-async def process_paper_pdf_legacy(pdf_contents: bytes, paper_id: Optional[str] = None) -> Dict[str, Any]:
-        """
-        Legacy-shaped adapter for callers expecting the v1 dict structure.
-        Keeps v2 as-is and maps its DTO to the expected fields.
-        """
-        _t0 = time.perf_counter()
-
-        # Run v2 processing
-        doc: ProcessedDocument = await process_paper_pdf(pdf_contents, paper_id)
-
-        # Helper to build data URL for a base64-encoded PNG
-        def _as_data_url_png(b64: str) -> str:
-            return f"data:image/png;base64,{b64}"
-
-        # Pages list in legacy format
-        pages: List[Dict[str, Any]] = []
-        for idx, page in enumerate(doc.pages):
-            pages.append({
-                "page_number": idx + 1,
-                "image_data_url": _as_data_url_png(page.img_base64),
-            })
-
-        # Thumbnail: use full first page image as a simple thumbnail
-        thumbnail_data_url: Optional[str] = None
-        if doc.pages:
-            thumbnail_data_url = _as_data_url_png(doc.pages[0].img_base64)
-
-        # Sections: flat list of rewritten contents
-        sections: List[Dict[str, Any]] = []
-        for s in doc.sections:
-            sections.append({
-                "rewritten_content": s.rewritten_content,
-            })
-
-        # Metrics
-        processing_time_seconds = max(0.0, time.perf_counter() - _t0)
-        num_pages = len(doc.pages)
-        
-        # Calculate usage summary from collected step costs
-        usage_summary = _calculate_usage_summary(doc.step_costs)
-        total_cost = usage_summary.get("total_cost")
-        avg_cost_per_page = (total_cost / num_pages) if total_cost and num_pages > 0 else None
-
-        result: Dict[str, Any] = {
-            "paper_id": paper_id or "temp_id",
-            "title": doc.title,
-            "authors": doc.authors,
-            "thumbnail_data_url": thumbnail_data_url,
-            "sections": sections,
-            "tables": [],
-            "figures": [],
-            "pages": pages,
-            "usage_summary": usage_summary,
-            "processing_time_seconds": processing_time_seconds,
-            "num_pages": num_pages,
-            "total_cost": total_cost,
-            "avg_cost_per_page": avg_cost_per_page,
-        }
-
-        return result

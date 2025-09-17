@@ -81,12 +81,42 @@ async def extract_markdown_from_pages(document: ProcessedDocument) -> None:
         
         # Step 5: Extract images from OCR response
         ocr_images = getattr(ocr_page, "images", []) or []
+        
+        # Get original page dimensions from OCR response for coordinate transformation
+        page_dimensions = getattr(ocr_page, "dimensions", None)
+        if page_dimensions:
+            original_width = getattr(page_dimensions, "width", None)
+            original_height = getattr(page_dimensions, "height", None)
+        else:
+            original_width = None
+            original_height = None
+        
+        # Get resized page dimensions from our stored page
+        resized_width = matching_page.width
+        resized_height = matching_page.height
+        
+        # Calculate scale factors for coordinate transformation
+        if original_width and original_height and resized_width and resized_height:
+            scale_x = resized_width / original_width  
+            scale_y = resized_height / original_height
+            logger.info(f"Page {page_index + 1}: original={original_width}x{original_height}, resized={resized_width}x{resized_height}, scale=({scale_x:.3f}, {scale_y:.3f})")
+        else:
+            scale_x = 1.0
+            scale_y = 1.0
+            logger.warning(f"Page {page_index + 1}: Could not determine scale factors for coordinate transformation - using 1.0")
+        
         for ocr_image in ocr_images:
-            # Extract bounding box coordinates
-            top_left_x = ocr_image.top_left_x
-            top_left_y = ocr_image.top_left_y
-            bottom_right_x = ocr_image.bottom_right_x
-            bottom_right_y = ocr_image.bottom_right_y
+            # Extract bounding box coordinates (in original page coordinate system)
+            orig_top_left_x = ocr_image.top_left_x
+            orig_top_left_y = ocr_image.top_left_y
+            orig_bottom_right_x = ocr_image.bottom_right_x
+            orig_bottom_right_y = ocr_image.bottom_right_y
+            
+            # Transform coordinates to resized image coordinate system
+            top_left_x = int(orig_top_left_x * scale_x)
+            top_left_y = int(orig_top_left_y * scale_y)
+            bottom_right_x = int(orig_bottom_right_x * scale_x) 
+            bottom_right_y = int(orig_bottom_right_y * scale_y)
             
             # Extract base64 image data
             image_data_url = ocr_image.image_base64
@@ -96,7 +126,7 @@ async def extract_markdown_from_pages(document: ProcessedDocument) -> None:
             
             image_base64 = extract_base64_from_data_url(image_data_url)
             
-            # Create ProcessedImage
+            # Create ProcessedImage with transformed coordinates
             processed_image = ProcessedImage(
                 img_base64=image_base64,
                 page_number=page_index + 1,

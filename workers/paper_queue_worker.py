@@ -2,27 +2,48 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 from contextlib import contextmanager
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import select, text
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from shared.db import SessionLocal
-from papers.models import PaperRow, PaperSlugRow
+from papers.models import Paper
+from papers.client import save_paper, create_paper_slug
+from papers.db.models import PaperRecord
 from shared.arxiv.client import fetch_pdf_for_processing
-from paperprocessor.client import process_paper_pdf_legacy
+from paperprocessor.client import process_paper_pdf
+from paperprocessor.models import ProcessedDocument
 from users.client import set_requests_processed
 
+
+### CONSTANTS ###
+
+WORKER_SLEEP_SECONDS = 60
+ERROR_SLEEP_SECONDS = 10
+
+
+### LOGGING SETUP ###
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("paper_queue_worker")
 
 
+### DATABASE HELPERS ###
+
 @contextmanager
-def session_scope():
+def database_session():
+    """
+    Create a database session with automatic commit/rollback handling.
+    
+    Yields:
+        Session: SQLAlchemy session for database operations
+        
+    Raises:
+        Exception: Any database error that occurs during the transaction
+    """
     session: Session = SessionLocal()
     try:
         yield session
@@ -34,84 +55,107 @@ def session_scope():
         session.close()
 
 
-async def _process_one(job: PaperRow) -> None:
+### PAPER PROCESSING FUNCTIONS ###
+
+async def _download_and_process_pdf(arxiv_identifier: str) -> ProcessedDocument:
+    """
+    Download PDF from arXiv and process it through the paper processing pipeline.
+    
+    Args:
+        arxiv_identifier: arXiv ID or URL to download and process
+        
+    Returns:
+        ProcessedDocument: Fully processed document with pages, sections, and images
+        
+    Raises:
+        Exception: If PDF download or processing fails
+    """
+    logger.info("Downloading PDF for arXiv identifier: %s", arxiv_identifier)
+    pdf_data = await fetch_pdf_for_processing(arxiv_identifier)
+    
+    logger.info("Processing PDF through pipeline")
+    processed_document = await process_paper_pdf(pdf_data.pdf_bytes)
+    
+    return processed_document
+
+
+
+
+def _mark_job_as_failed(job_id: int, error_message: str) -> None:
+    """
+    Mark a processing job as failed in the database.
+    
+    Args:
+        job_id: ID of the job that failed
+        error_message: Description of the failure
+    """
+    with database_session() as session:
+        failed_job = session.get(PaperRecord, job_id, with_for_update=True)
+        if not failed_job:
+            logger.warning("Cannot mark job as failed - job %s not found", job_id)
+            return
+        
+        # Update job status to failed
+        failed_job.status = 'failed'
+        failed_job.error_message = error_message
+        failed_job.finished_at = datetime.utcnow()
+        failed_job.updated_at = datetime.utcnow()
+        session.add(failed_job)
+        
+        logger.info("Marked job %s as failed: %s", job_id, error_message)
+
+
+async def _process_single_paper_job(job: PaperRecord) -> None:
+    """
+    Process a single paper job through the complete pipeline.
+    
+    Args:
+        job: Paper processing job from the database
+        
+    Raises:
+        Exception: If any step of processing fails
+    """
     logger.info("Processing job id=%s paper_uuid=%s arxiv=%s", job.id, job.paper_uuid, job.arxiv_id)
+    
     try:
-        pdf = await fetch_pdf_for_processing(job.arxiv_url or job.arxiv_id)
-        result = await process_paper_pdf_legacy(pdf.pdf_bytes, paper_id=job.paper_uuid)
-
-        # Persist processed result JSON (avoid v1 import)
-        _store_processed_result(job.paper_uuid, result)
-
-        # Read metrics directly from result (computed by processor)
-        num_pages = result.get('num_pages')
-        processing_time = result.get('processing_time_seconds')
-        total_cost = result.get('total_cost')
-        avg_cost_per_page = result.get('avg_cost_per_page')
-
-        with session_scope() as s:
-            j = s.get(PaperRow, job.id, with_for_update=True)
-            if not j:
-                return
-            j.status = 'completed'
-            j.finished_at = datetime.utcnow()
-            j.updated_at = datetime.utcnow()
-            j.num_pages = num_pages
-            j.processing_time_seconds = processing_time
-            j.total_cost = total_cost
-            j.avg_cost_per_page = avg_cost_per_page
-            # Persist title and authors (strings) if available; else set to None
-            j.title = result.get('title') if isinstance(result.get('title'), str) else None
-            j.authors = result.get('authors') if isinstance(result.get('authors'), str) else None
-            thumb_val = result.get('thumbnail_data_url')
-            j.thumbnail_data_url = thumb_val if isinstance(thumb_val, str) else None
-            s.add(j)
-            # Create slug on completion; idempotent for same paper, strict for true collisions
-            try:
-                # If this paper already has a non-tombstoned slug, reuse it (idempotent restart)
-                existing_for_paper = (
-                    s.query(PaperSlugRow)
-                    .filter(PaperSlugRow.paper_uuid == j.paper_uuid, PaperSlugRow.tombstone == False)  # noqa: E712
-                    .order_by(PaperSlugRow.created_at.desc())
-                    .first()
-                )
-                if existing_for_paper:
-                    slug = existing_for_paper.slug
-                else:
-                    slug = _build_paper_slug(j.title, j.authors)
-                    exists = s.query(PaperSlugRow).filter(PaperSlugRow.slug == slug).first()
-                    if exists:
-                        # If slug already maps to this paper, reuse; otherwise it's a true collision
-                        if exists.paper_uuid != j.paper_uuid:
-                            raise ValueError(f"Slug collision for '{slug}'")
-                        # Reuse without inserting a duplicate row
-                    else:
-                        s.add(PaperSlugRow(slug=slug, paper_uuid=j.paper_uuid, tombstone=False, created_at=datetime.utcnow()))
-            except Exception:
-                logger.exception("Failed to create slug for paper_uuid=%s", j.paper_uuid)
-                raise
-            # After slug is added in the same transaction, mark user requests processed.
-            # This requires slug; if it fails, let it bubble up (no backfill).
-            s.flush()
-            await set_requests_processed(s, j.arxiv_id, slug)
-    except Exception as e:
-        logger.exception("Job %s failed", job.id)
-        with session_scope() as s:
-            j = s.get(PaperRow, job.id, with_for_update=True)
-            if not j:
-                return
-            j.status = 'failed'
-            j.error_message = str(e)
-            j.finished_at = datetime.utcnow()
-            j.updated_at = datetime.utcnow()
-            s.add(j)
+        # Step 1: Download and process PDF
+        processed_document = await _download_and_process_pdf(job.arxiv_url or job.arxiv_id)
+        
+        # Step 2: Add job metadata to processed document
+        processed_document.paper_uuid = job.paper_uuid
+        processed_document.arxiv_id = job.arxiv_id
+        
+        # Step 3: Save processed document to database and JSON file
+        with database_session() as session:
+            saved_paper = save_paper(session, processed_document)
+            
+            # Step 4: Create URL slug for the paper
+            paper_slug_dto = create_paper_slug(session, saved_paper)
+            
+            # Step 5: Mark user requests as processed
+            session.flush()  # Ensure slug is committed before marking requests
+            await set_requests_processed(session, saved_paper.arxiv_id, paper_slug_dto.slug)
+            
+        logger.info("Successfully completed processing job %s", job.id)
+        
+    except Exception as error:
+        logger.exception("Job %s failed during processing", job.id)
+        _mark_job_as_failed(job.id, str(error))
+        raise
 
 
-def _claim_next_job() -> Optional[PaperRow]:
-    # Use a transaction and SELECT ... FOR UPDATE SKIP LOCKED to avoid contention
-    with session_scope() as s:
-        # MySQL 8 supports SKIP LOCKED
-        row = s.execute(
+### JOB MANAGEMENT FUNCTIONS ###
+
+def _get_next_available_job() -> Optional[PaperRecord]:
+    """
+    Claim the next available job from the queue using database locking.
+    
+    Returns:
+        Optional[PaperRecord]: Next job to process, or None if queue is empty
+    """
+    with database_session() as session:
+        # Step 1: Find and lock next available job
+        job_row = session.execute(
             text(
                 """
                 SELECT id FROM papers
@@ -122,81 +166,68 @@ def _claim_next_job() -> Optional[PaperRow]:
                 """
             )
         ).first()
-        if not row:
+        
+        if not job_row:
             return None
-        job: PaperRow = s.get(PaperRow, row[0], with_for_update=True)
-        if not job:
+        
+        # Step 2: Load job record with lock
+        job_record: PaperRecord = session.get(PaperRecord, job_row[0], with_for_update=True)
+        if not job_record:
+            logger.warning("Job row disappeared during locking: %s", job_row[0])
             return None
-        job.status = 'processing'
-        job.started_at = datetime.utcnow()
-        job.updated_at = datetime.utcnow()
-        s.add(job)
-        # After commit, return a detached copy (refresh to load values)
-        s.flush()
-        s.expunge(job)
-        return job
+        
+        # Step 3: Mark job as processing
+        job_record.status = 'processing'
+        job_record.started_at = datetime.utcnow()
+        job_record.updated_at = datetime.utcnow()
+        session.add(job_record)
+        
+        # Step 4: Commit changes and return detached job record
+        session.flush()
+        session.expunge(job_record)
+        
+        logger.info("Claimed job %s for processing", job_record.id)
+        return job_record
 
 
-async def worker_loop():
+### MAIN WORKER LOOP ###
+
+async def run_paper_processing_worker() -> None:
+    """
+    Main worker loop that continuously processes paper jobs from the queue.
+    
+    This function runs indefinitely, checking for new jobs every 60 seconds
+    when the queue is empty, and processing jobs as they become available.
+    """
     logger.info("Paper queue worker started")
+    
     while True:
         try:
-            job = _claim_next_job()
-            if not job:
-                await asyncio.sleep(60)
+            # Step 1: Try to get next job from queue
+            next_job = _get_next_available_job()
+            
+            if not next_job:
+                # Step 2: No jobs available - wait before checking again
+                logger.debug("No jobs available, sleeping for %s seconds", WORKER_SLEEP_SECONDS)
+                await asyncio.sleep(WORKER_SLEEP_SECONDS)
                 continue
-            await _process_one(job)
+            
+            # Step 3: Process the job
+            await _process_single_paper_job(next_job)
+            
         except Exception:
-            logger.exception("Worker loop error; sleeping")
-            await asyncio.sleep(10)
+            # Step 4: Handle unexpected errors and continue running
+            logger.exception("Worker loop encountered unexpected error, sleeping for %s seconds", ERROR_SLEEP_SECONDS)
+            await asyncio.sleep(ERROR_SLEEP_SECONDS)
 
 
+### MAIN ENTRY POINT ###
 
-
-# --- Local helpers (remove v1 dependency) ---
-def _get_processed_result_path(paper_uuid: str) -> str:
-    base_dir = os.path.abspath(os.environ.get("PAPER_JSON_DIR", os.path.join(os.getcwd(), 'data', 'paperjsons')))
-    return os.path.join(base_dir, f"{paper_uuid}.json")
-
-
-def _store_processed_result(paper_uuid: str, result: dict) -> str:
-    target_path = _get_processed_result_path(paper_uuid)
-    os.makedirs(os.path.dirname(target_path), exist_ok=True)
-    tmp_path = f"{target_path}.tmp"
-    import json as _json
-    with open(tmp_path, 'w', encoding='utf-8') as f:
-        _json.dump(result, f, ensure_ascii=False)
-    os.replace(tmp_path, target_path)
-    return target_path
-
-
-def _build_paper_slug(title: str | None, authors: str | None) -> str:
-    if not title or not authors:
-        raise ValueError("Cannot generate slug without title and authors")
-    try:
-        import unicodedata
-        t = unicodedata.normalize('NFKD', title).encode('ascii', 'ignore').decode('ascii')
-        a = unicodedata.normalize('NFKD', authors).encode('ascii', 'ignore').decode('ascii')
-    except Exception:
-        t, a = title, authors
-    title_tokens = [tok for tok in (t or '').split() if tok][:12]
-    author_list = [s.strip() for s in (a or '').split(',') if s.strip()]
-    if not author_list:
-        raise ValueError("Cannot generate slug: no authors present")
-    def _last_name(full: str) -> str:
-        parts = full.split()
-        return parts[-1] if parts else full
-    use_authors = author_list[:2]
-    base = f"{' '.join(title_tokens) if title_tokens else t} {' '.join(_last_name(x) for x in use_authors)}".strip()
-    import re as _re
-    s = base.lower()
-    s = _re.sub(r"[^a-z0-9]+", "-", s)
-    s = _re.sub(r"-+", "-", s).strip('-')
-    return s[:120]
-
-
-def main():
-    asyncio.run(worker_loop())
+def main() -> None:
+    """
+    Main entry point for the paper queue worker.
+    """
+    asyncio.run(run_paper_processing_worker())
 
 
 if __name__ == "__main__":
