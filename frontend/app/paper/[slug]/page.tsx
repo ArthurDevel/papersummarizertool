@@ -12,6 +12,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
+import React from 'react';
 
 // Minimal approach: convert backticked segments that look like TeX into $...$
 const preprocessBacktickedMath = (src: string): string => {
@@ -525,7 +526,7 @@ export default function LayoutTestsPage() {
 
             {/* 5-Minute Summary */}
             {paperData.five_minute_summary && (
-              <div ref={summaryRef} className="mb-4 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg shadow-md overflow-hidden">
+              <div ref={summaryRef} className="mb-8 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg shadow-md overflow-hidden">
                 <div className="p-4">
                   <div className="flex items-center gap-2 mb-3">
                     <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
@@ -562,21 +563,23 @@ export default function LayoutTestsPage() {
                     </span>
                   )}
                 </div>
-                <div className="prose dark:prose-invert max-w-none">
+                <div>
                   {paperData.sections.map((section: Section, idx: number) => {
                     const sectionId = `sec-${idx}`;
                     const isLastSection = idx === paperData.sections.length - 1;
 
                     return (
-                      <div
-                        key={section.section_title + '-' + idx}
-                        ref={(el) => { sectionRefs.current[sectionId] = el; }}
-                      >
-                        {renderRewrittenSectionContent(section)}
-                        {!isLastSection && (
-                          <hr className="my-6" />
-                        )}
-                      </div>
+                      <React.Fragment key={section.section_title + '-' + idx}>
+                        <div
+                          ref={(el) => {
+                            sectionRefs.current[sectionId] = el;
+                          }}
+                          className="prose dark:prose-invert max-w-none"
+                        >
+                          {renderRewrittenSectionContent(section)}
+                        </div>
+                        {!isLastSection && <hr className="my-6" />}
+                      </React.Fragment>
                     );
                   })}
                 </div>
