@@ -61,6 +61,8 @@ class ProcessedDocument:
     # Section class is defined below
     sections: List["Section"] = field(default_factory=list)
     rewritten_final_markdown: Optional[str] = None
+    # Summary generation
+    five_minute_summary: Optional[str] = None    # Accessible 5-minute summary
     # Cost tracking
     step_costs: List[ApiCallCostForStep] = field(default_factory=list)
 

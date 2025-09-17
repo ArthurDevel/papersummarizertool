@@ -12,6 +12,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
+import React from 'react';
 
 // Minimal approach: convert backticked segments that look like TeX into $...$
 const preprocessBacktickedMath = (src: string): string => {
@@ -33,6 +34,7 @@ export default function LayoutTestsPage() {
   const [similarItems, setSimilarItems] = useState<Array<{ key: string; title: string | null; authors: string | null; thumbnail_data_url: string | null; slug: string | null }>>([]);
   const abortRef = useRef<AbortController | null>(null);
   const mainRef = useRef<HTMLDivElement | null>(null);
+  const summaryRef = useRef<HTMLDivElement | null>(null);
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
   const [footerOverlap, setFooterOverlap] = useState<number>(0);
@@ -187,16 +189,21 @@ export default function LayoutTestsPage() {
       const anchorY = 72; // approx navbar + padding
       let bestId: string | null = null;
       let bestDelta = Number.POSITIVE_INFINITY;
-      paperData.sections.forEach((_, idx) => {
-        const id = `sec-${idx}`;
-        const el = sectionRefs.current[id];
-        if (!el) return;
-        const delta = Math.abs(el.getBoundingClientRect().top - anchorY);
+
+      const allCheckableSections = [
+        { id: 'sec-summary', element: summaryRef.current },
+        ...paperData.sections.map((_, idx) => ({ id: `sec-${idx}`, element: sectionRefs.current[`sec-${idx}`] })),
+      ];
+
+      allCheckableSections.forEach(({ id, element }) => {
+        if (!element) return;
+        const delta = Math.abs(element.getBoundingClientRect().top - anchorY);
         if (delta < bestDelta) {
           bestDelta = delta;
           bestId = id;
         }
       });
+
       if (bestId && bestId !== activeSectionId) setActiveSectionId(bestId);
     };
 
@@ -243,12 +250,11 @@ export default function LayoutTestsPage() {
     const figures = paperData?.figures || [];
     
     return (
-      <div key={section.section_title} className="prose dark:prose-invert max-w-none mb-6 last:mb-0">
+      <>
         {!section.rewritten_content && section.level === 1 && (
           <h4 className="font-semibold">{section.section_title} (p. {section.start_page}-{section.end_page})</h4>
         )}
         {section.rewritten_content && (
-          <div className="mt-2">
             <ReactMarkdown
               remarkPlugins={[remarkGfm, remarkMath]}
               rehypePlugins={[[rehypeKatex, { strict: false, throwOnError: false }]]}
@@ -312,9 +318,8 @@ export default function LayoutTestsPage() {
             >
               {preprocessBacktickedMath(section.rewritten_content || '')}
             </ReactMarkdown>
-          </div>
         )}
-      </div>
+      </>
     );
   };
 
@@ -416,32 +421,60 @@ export default function LayoutTestsPage() {
           style={{ height: `calc(100vh - ${footerOverlap}px - 2rem)` }}
         >
           <div className="h-full overflow-y-auto p-4">
-              <h2 className="text-xl font-semibold mb-4">Sections</h2>
               {paperData ? (
-                <ul className="space-y-1">
-                  {paperData.sections.map((section: Section, idx: number) => {
-                    const id = `sec-${idx}`;
-                    const isActive = activeSectionId === id;
-                    return (
-                      <li key={id}>
-                        <button
-                          className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
-                            isActive ? 'bg-blue-600 text-white' : 'bg-white dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200'
-                          }`}
-                          onClick={() => {
-                            const el = sectionRefs.current[id];
-                            el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                            setActiveSectionId(id);
-                          }}
-                          title={`Go to ${section.section_title}`}
-                        >
-                          <span className="mr-2 font-semibold">{idx + 1}.</span>
-                          <span>{section.section_title || `Section ${idx + 1}`}</span>
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
+                <>
+                  {paperData.five_minute_summary && (
+                    <div className="mb-6">
+                      <h2 className="text-lg font-semibold mb-2 text-gray-800 dark:text-gray-200">5-Minute Summary</h2>
+                      <div className="border-b border-gray-200 dark:border-gray-700 mb-2"></div>
+                      <ul className="space-y-1">
+                        <li>
+                          <button
+                            className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
+                              activeSectionId === 'sec-summary' ? 'bg-blue-600 text-white' : 'bg-white dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200'
+                            }`}
+                            onClick={() => {
+                              summaryRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                              setActiveSectionId('sec-summary');
+                            }}
+                            title="Go to 5-Minute Summary"
+                          >
+                            Summary
+                          </button>
+                        </li>
+                      </ul>
+                    </div>
+                  )}
+
+                  <div>
+                    <h2 className="text-lg font-semibold mb-2 text-gray-800 dark:text-gray-200">Simplified Version</h2>
+                    <div className="border-b border-gray-200 dark:border-gray-700 mb-2"></div>
+                    <ul className="space-y-1">
+                      {paperData.sections.map((section: Section, idx: number) => {
+                        const id = `sec-${idx}`;
+                        const isActive = activeSectionId === id;
+                        return (
+                          <li key={id}>
+                            <button
+                              className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
+                                isActive ? 'bg-blue-600 text-white' : 'bg-white dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200'
+                              }`}
+                              onClick={() => {
+                                const el = sectionRefs.current[id];
+                                el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                setActiveSectionId(id);
+                              }}
+                              title={`Go to ${section.section_title}`}
+                            >
+                              <span className="mr-2 font-semibold">{idx + 1}.</span>
+                              <span>{section.section_title || `Section ${idx + 1}`}</span>
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                </>
               ) : (
                 <div className="text-sm text-gray-500 dark:text-gray-400">Loading sections…</div>
               )}
@@ -491,20 +524,66 @@ export default function LayoutTestsPage() {
               </div>
             </div>
 
-            <div className="flex flex-col space-y-6 flex-grow">
-              {paperData.sections.map((section: Section, idx: number) => {
-                const sectionId = `sec-${idx}`;
-
-                return (
-                  <div
-                    key={section.section_title + '-' + idx}
-                    ref={(el) => { sectionRefs.current[sectionId] = el; }}
-                    className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-md overflow-hidden p-4"
-                  >
-                    {renderRewrittenSectionContent(section)}
+            {/* 5-Minute Summary */}
+            {paperData.five_minute_summary && (
+              <div ref={summaryRef} className="mb-8 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg shadow-md overflow-hidden">
+                <div className="p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                    <h2 className="text-lg font-semibold text-blue-900 dark:text-blue-100">
+                      5-Minute Summary
+                    </h2>
+                    <span className="text-xs text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-900/50 px-2 py-1 rounded-full">
+                      ⚡ Quick read
+                    </span>
                   </div>
-                );
-              })}
+                  <div className="prose dark:prose-invert max-w-none">
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm, remarkMath]}
+                      rehypePlugins={[[rehypeKatex, { strict: false, throwOnError: false }]]}
+                    >
+                      {preprocessBacktickedMath(paperData.five_minute_summary)}
+                    </ReactMarkdown>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Simplified Version */}
+            <div className="mb-4 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-md overflow-hidden">
+              <div className="p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="w-2 h-2 bg-gray-500 rounded-full"></div>
+                  <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                    Simplified Version
+                  </h2>
+                  {typeof readingMinutes === 'number' && (
+                    <span className="text-xs text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded-full">
+                      📖 {readingMinutes} min read
+                    </span>
+                  )}
+                </div>
+                <div>
+                  {paperData.sections.map((section: Section, idx: number) => {
+                    const sectionId = `sec-${idx}`;
+                    const isLastSection = idx === paperData.sections.length - 1;
+
+                    return (
+                      <React.Fragment key={section.section_title + '-' + idx}>
+                        <div
+                          ref={(el) => {
+                            sectionRefs.current[sectionId] = el;
+                          }}
+                          className="prose dark:prose-invert max-w-none"
+                        >
+                          {renderRewrittenSectionContent(section)}
+                        </div>
+                        {!isLastSection && <hr className="my-6" />}
+                      </React.Fragment>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           </>
         ) : (

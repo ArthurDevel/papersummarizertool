@@ -13,6 +13,7 @@ from paperprocessor.internals.metadata_extractor import extract_metadata
 from paperprocessor.internals.structure_extractor import extract_structure
 from paperprocessor.internals.header_formatter import format_headers, format_images
 from paperprocessor.internals.section_rewriter import rewrite_sections
+from paperprocessor.internals.summary_generator import generate_five_minute_summary
 from shared.db import SessionLocal
 from papers.client import get_paper_metadata, get_processed_result_path
 
@@ -213,6 +214,10 @@ async def process_paper_pdf(pdf_contents: bytes, paper_id: Optional[str] = None)
         # Step 5: Rewrite sections - modifies document in place
         logger.info("Step 5: Rewriting sections.")
         await rewrite_sections(document)
+        
+        # Step 6: Generate 5-minute summary - modifies document in place
+        logger.info("Step 6: Generating 5-minute summary.")
+        await generate_five_minute_summary(document)
         
         logger.info("Paper processing pipeline v2 finished.")
         return document
