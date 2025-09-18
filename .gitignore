@@ -57,3 +57,10 @@ data/
 # Notebook outputs
 paperprocessor/debugging_output/
 paperprocessor/notebooks/outputs/
+
+# Airflow
+/airflow/logs
+airflow.cfg
+airflow-webserver.pid
+webserver_config.py
+unittests.cfg

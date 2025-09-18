@@ -1,6 +1,44 @@
 version: '3.8'
 
+#--------------------------------------------------------------------------
+# Common Airflow Configuration
+#
+# This section uses a YAML anchor (&airflow-common) to define a common
+# configuration that is shared across all Airflow services. This helps
+# us avoid repeating the same settings for the webserver, scheduler, etc.
+#--------------------------------------------------------------------------
+x-airflow-common:
+  &airflow-common
+  build:
+    context: .
+    dockerfile: ./airflow/Dockerfile
+  environment:
+    - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@airflow-postgres/airflow
+    - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+    - AIRFLOW__SCHEDULER__DAG_DIR_LIST_INTERVAL=10
+    - AIRFLOW__WEBSERVER__EXPOSE_CONFIG=True
+  volumes:
+    - ./airflow/dags:/opt/airflow/dags
+    - ./airflow/logs:/opt/airflow/logs
+    - ./airflow/plugins:/opt/airflow/plugins
+  depends_on:
+    airflow-postgres:
+      condition: service_healthy
+
+#--------------------------------------------------------------------------
+# Application Services
+#
+# This is the main section where all the running services for the
+# application are defined.
+#--------------------------------------------------------------------------
 services:
+
+  #--------------------------------------------------------------------------
+  # Main Application Service (app)
+  #
+  # This is the primary service that runs the Python backend (FastAPI) and
+  # serves the Next.js frontend. It's the main entrypoint for the application.
+  #--------------------------------------------------------------------------
   app:
     build:
       context: .
@@ -22,32 +60,15 @@ services:
         condition: service_started
     restart: unless-stopped
 
-  #feedbackrouter:
-  #  image: arthurdevel/evalrouter:0.1.0
-  #  environment:
-  #    MYSQL_HOST: feedbackrouter-mysql
-  #    MYSQL_USER: feedbackrouter_app
-  #    MYSQL_PASSWORD: ${FEEDBACKROUTER_MYSQL_PASSWORD}
-  #    MYSQL_DATABASE: feedbackrouter
-  #  ports:
-  #    - "${FEEDBACKROUTER_HOSTPORT_API:-18000}:8000" # API at http://localhost:${FEEDBACKROUTER_HOSTPORT_API:-18000}/v1
-  #    - "${FEEDBACKROUTER_HOSTPORT_UI:-13000}:3000"  # UI  at http://localhost:${FEEDBACKROUTER_HOSTPORT_UI:-13000}
-    #depends_on:
-    #  - feedbackrouter-mysql
-  #  restart: unless-stopped
 
-  #feedbackrouter-mysql:
-  #  image: mysql:8.0
-  #  command: --default-authentication-plugin=mysql_native_password
-   # restart: always
-   # environment:
-  #    MYSQL_ROOT_PASSWORD: ${FEEDBACKROUTER_MYSQL_ROOT_PASSWORD}
-  #    MYSQL_DATABASE: feedbackrouter
-  #    MYSQL_USER: feedbackrouter_app
-  #    MYSQL_PASSWORD: ${FEEDBACKROUTER_MYSQL_PASSWORD}
-  #  volumes:
-  #    - feedbackrouter-mysql-data:/var/lib/mysql
-
+  #--------------------------------------------------------------------------
+  # Database Services
+  #
+  # These services provide the relational databases for the application.
+  # - `mysql`: The main database for application data (papers, etc.).
+  # - `mysql_auth`: A separate database dedicated to user authentication.
+  # - `qdrant`: The vector database for storing and searching high-dimensional vector embeddings.
+  #--------------------------------------------------------------------------
   mysql:
     image: mysql:8.0
     command: --default-authentication-plugin=mysql_native_password
@@ -92,6 +113,64 @@ services:
     volumes:
       - qdrant-data:/qdrant/storage
 
+
+  #--------------------------------------------------------------------------
+  # Airflow Services
+  #
+  # The following services manage our scheduled job runner, Airflow.
+  # You can access the UI at http://localhost:${HOSTPORT_AIRFLOW:-8080}
+  #--------------------------------------------------------------------------
+
+  airflow-postgres:
+    image: postgres:13
+    container_name: papersummarizer-airflow-postgres
+    restart: always
+    environment:
+      - POSTGRES_USER=airflow
+      - POSTGRES_PASSWORD=airflow
+      - POSTGRES_DB=airflow
+    volumes:
+      - airflow-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  airflow-init:
+    <<: *airflow-common
+    container_name: papersummarizer-airflow-init
+    entrypoint: /bin/bash
+    command: -c "airflow db init && airflow users create --username admin --password admin --firstname Anonymous --lastname User --role Admin --email admin@example.org"
+    depends_on:
+      airflow-postgres:
+        condition: service_healthy
+
+  airflow-webserver:
+    <<: *airflow-common
+    container_name: papersummarizer-airflow-webserver
+    restart: always
+    command: webserver
+    ports:
+      - "${HOSTPORT_AIRFLOW:-8080}:8080"
+    depends_on:
+      airflow-postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-scheduler:
+    <<: *airflow-common
+    container_name: papersummarizer-airflow-scheduler
+    restart: always
+    command: scheduler
+    depends_on:
+      airflow-postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+
 volumes:
   qdrant-data: 
   feedbackrouter-mysql-data:
+  airflow-postgres-data:

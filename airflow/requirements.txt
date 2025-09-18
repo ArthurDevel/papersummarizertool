@@ -1,0 +1,4 @@
+# Dependencies for Airflow DAGs
+requests
+mysqlclient
+sqlalchemy
