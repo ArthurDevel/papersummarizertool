@@ -256,6 +256,11 @@ def paper_processing_worker_dag():
                 
             except Exception as e:
                 print(f"Failed to process job {next_job.id}: {e}")
+                
+                # Mark job as failed to prevent stuck 'processing' status
+                with database_session() as session:
+                    _mark_job_failed(session, next_job.id, str(e))
+                
                 failed_count += 1
                 # Continue processing other jobs
         
