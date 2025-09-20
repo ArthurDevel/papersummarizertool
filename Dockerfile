@@ -19,7 +19,6 @@ WORKDIR /app
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    supervisor \
     nodejs \
     npm \
     default-libmysqlclient-dev \
@@ -60,9 +59,6 @@ COPY entrypoint.sh /usr/local/bin/
 # Make entrypoint script executable
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
-# Copy supervisor configuration
-COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
-
 # Expose ports for backend and frontend
 EXPOSE ${CONTAINERPORT_API:-8000}
 EXPOSE ${CONTAINERPORT_FRONTEND:-3000}
@@ -70,5 +66,5 @@ EXPOSE ${CONTAINERPORT_FRONTEND:-3000}
 # Set the entrypoint script
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 
-# Start supervisor
-CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"] 
+# Start both backend and frontend services directly
+CMD ["sh", "-c", "uvicorn api.main:app --host 0.0.0.0 --port ${CONTAINERPORT_API:-8000} & cd frontend && npm start"] 
