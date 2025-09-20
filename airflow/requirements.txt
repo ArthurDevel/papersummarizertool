@@ -2,3 +2,7 @@
 requests
 mysqlclient
 sqlalchemy
+pydantic
+pydantic-settings
+python-dotenv
+pymysql

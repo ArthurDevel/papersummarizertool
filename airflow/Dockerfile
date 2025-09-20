@@ -16,3 +16,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Install any additional packages needed by DAGs
 RUN pip install --no-cache-dir requests
+
+# Copy shared modules needed by DAGs
+COPY shared /opt/airflow/shared
+COPY papers /opt/airflow/papers
+COPY users /opt/airflow/users
+COPY paperprocessor /opt/airflow/paperprocessor
