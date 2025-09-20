@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Column, DateTime, Integer, String, Text, UniqueConstraint, Float, Boolean, Index
+from sqlalchemy import BigInteger, Column, DateTime, Integer, String, Text, UniqueConstraint, Float, Boolean, Index, JSON
 from sqlalchemy.dialects.mysql import MEDIUMTEXT
 
 from shared.db import Base
@@ -34,6 +34,8 @@ class PaperRecord(Base):
     avg_cost_per_page = Column(Float, nullable=True)
     # Base64 data URL of a 400x400 PNG thumbnail cropped from the top square of the first page
     thumbnail_data_url = Column(MEDIUMTEXT, nullable=True)
+    # External popularity signals stored as JSON
+    external_popularity_signals = Column(JSON, nullable=True)
 
     __table_args__ = (
         UniqueConstraint("paper_uuid", name="uq_papers_paper_uuid"),

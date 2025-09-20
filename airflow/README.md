@@ -46,3 +46,35 @@ Here’s how to create a new scheduled job.
 - You only need to do this if you changed `airflow/requirements.txt`.
 - Stop the running services (`Ctrl+C` in the terminal).
 - Run `docker-compose up --build` again. This rebuilds the Docker image with your new packages installed.
+
+## 4. Importing Modules from Other Parts of the Codebase
+
+If your DAG needs to import from other modules in the project (like `shared`, `papers`, `users`, etc.), follow these steps:
+
+**Step 1: Add Python Path**
+Add this to the top of your DAG file:
+```python
+import sys
+# Add project root to Python path to find shared modules
+sys.path.insert(0, '/opt/airflow')
+```
+
+**Step 2: Add Required Dependencies**
+If the imported modules have dependencies not already in Airflow, add them to `airflow/requirements.txt`:
+```
+# Example: if importing from shared/config.py
+pydantic-settings==2.10.1
+python-dotenv==1.0.0
+```
+
+**Step 3: Import Normally**
+```python
+from shared.db import SessionLocal
+from papers.client import create_paper
+from papers.models import Paper
+```
+
+**How It Works:**
+- **Development**: Project root is mounted at `/opt/airflow` via `docker-compose.override.yaml`
+- **Production**: Modules are copied to `/opt/airflow/` during Docker build via `airflow/Dockerfile`
+- The `sys.path.insert(0, '/opt/airflow')` makes Python look in the project root for modules

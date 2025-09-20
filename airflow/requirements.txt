@@ -2,3 +2,24 @@
 requests
 mysqlclient
 sqlalchemy
+pydantic
+pydantic-settings
+python-dotenv
+pymysql
+pendulum
+
+# paperprocessor dependencies
+pillow
+numpy
+PyMuPDF
+scipy
+rapidfuzz
+openai
+mistralai
+aiofiles
+
+# shared module dependencies  
+qdrant-client
+httpx
+aiohttp
+email-validator

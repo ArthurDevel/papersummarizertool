@@ -12,7 +12,7 @@ import uuid
 
 from sqlalchemy.orm import Session
 
-from papers.models import Paper, PaperSlug, Page, Section
+from papers.models import Paper, PaperSlug, Page, Section, ExternalPopularitySignal
 from papers.db.client import (
     get_paper_record, create_paper_record, update_paper_record, list_paper_records, 
     get_paper_slugs, get_all_paper_slugs, tombstone_paper_slugs,
@@ -137,6 +137,61 @@ def create_paper_slug(db: Session, paper: Paper) -> PaperSlug:
 
 
 ### MAIN FUNCTIONS ###
+
+def create_paper(
+    db: Session, 
+    arxiv_id: str, 
+    title: Optional[str] = None,
+    authors: Optional[str] = None,
+    external_popularity_signals: Optional[List[ExternalPopularitySignal]] = None,
+    initiated_by_user_id: Optional[str] = None
+) -> Paper:
+    """
+    Create a new paper and add it to the processing queue.
+    
+    IMPORTANT: This function creates a paper with status 'not_started', which means
+    it will be automatically picked up by the paper processing worker for full
+    PDF processing, OCR, and content extraction.
+    
+    Args:
+        db: Active database session
+        arxiv_id: ArXiv paper identifier (e.g., "2509.14233")
+        title: Paper title (optional - will be extracted during processing if not provided)
+        authors: Comma-separated author names (optional - will be extracted if not provided)
+        external_popularity_signals: List of ExternalPopularitySignal objects with metrics
+        initiated_by_user_id: User ID who requested processing (None for system jobs)
+        
+    Returns:
+        Paper: Created paper DTO with status 'not_started' (queued for processing)
+        
+    Raises:
+        ValueError: If paper with this arXiv ID already exists in the database
+        RuntimeError: If database operation fails
+    """
+    # Step 1: Check for duplicates using internal database layer
+    try:
+        existing_paper = get_paper_record(db, arxiv_id, by_arxiv_id=True)
+        raise ValueError(f"Paper with arXiv ID {arxiv_id} already exists in database")
+    except FileNotFoundError:
+        # This is good - paper doesn't exist yet
+        pass
+    
+    # Step 2: Create paper DTO for queuing
+    paper_dto = Paper(
+        paper_uuid=str(uuid.uuid4()),
+        arxiv_id=arxiv_id,
+        title=title,
+        authors=authors,
+        status='not_started',  # This queues the paper for processing!
+        initiated_by_user_id=initiated_by_user_id,
+        external_popularity_signals=external_popularity_signals or []
+    )
+    
+    # Step 3: Persist to database using internal layer
+    create_paper_record(db, paper_dto)
+    
+    return paper_dto
+
 
 def list_papers(db: Session, statuses: Optional[List[str]], limit: int) -> List[Paper]:
     records = list_paper_records(db, statuses, limit)
