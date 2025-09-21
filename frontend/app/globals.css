@@ -1,3 +1,76 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities; 
+
+/* =============================================================
+   Markdown rendering (global)
+   Why: Markdown content (tables, math, images, code) can overflow
+        the viewport on small screens and cause horizontal scroll.
+   Goal: Keep the reader within bounds while preserving readability.
+   Scope: Applies to elements inside .prose (Tailwind Typography)
+          and KaTeX display math blocks.
+   ============================================================= */
+
+/* Base: on mobile, break long words/URLs to avoid page-wide overflow */
+@media (max-width: 1023px) {
+  .prose {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+}
+
+/* Media: keep media responsive and within the text column */
+.prose img,
+.prose video,
+.prose svg,
+.prose canvas {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Tables: preserve native table layout, wrap cells, avoid 1-char columns */
+.prose table {
+  display: table;
+  width: 100%;
+  table-layout: auto;
+  border-collapse: collapse;
+}
+
+/* On mobile, allow cell content to wrap so tables stay readable */
+@media (max-width: 1023px) {
+  .prose table th,
+  .prose table td {
+    word-break: break-word;
+    white-space: normal;
+  }
+}
+
+/* Code blocks: allow horizontal scroll for long lines */
+.prose pre {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+/* Inline code: allow wrapping of long identifiers/URLs */
+.prose code {
+  word-break: break-word;
+}
+
+/* KaTeX display math: enable horizontal scroll within the math block */
+.katex-display {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Inner math: allow actual width so the scrollbar has effect */
+.katex-display > .katex {
+  display: inline-block;
+  min-width: max-content;
+}
+
+/* Defensive: if a blockquote holds wide content, scroll it instead of page */
+.prose blockquote {
+  overflow-x: auto;
+}
