@@ -17,6 +17,8 @@ x-airflow-common:
     - AIRFLOW__CORE__EXECUTOR=LocalExecutor
     - AIRFLOW__SCHEDULER__DAG_DIR_LIST_INTERVAL=10
     - AIRFLOW__WEBSERVER__EXPOSE_CONFIG=True
+  env_file:
+    - .env
   volumes:
     - ./airflow/dags:/opt/airflow/dags
     - ./airflow/logs:/opt/airflow/logs

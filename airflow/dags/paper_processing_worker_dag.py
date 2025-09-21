@@ -2,6 +2,7 @@ import sys
 import os
 import pendulum
 import asyncio
+import fitz  # PyMuPDF
 from datetime import datetime
 from contextlib import contextmanager
 from typing import Optional, NamedTuple
@@ -21,6 +22,11 @@ from shared.arxiv.client import fetch_pdf_for_processing
 from paperprocessor.client import process_paper_pdf
 from paperprocessor.models import ProcessedDocument
 from users.client import set_requests_processed
+
+
+### CONSTANTS ###
+
+MAX_PDF_PAGES = 50
 
 
 ### DATA STRUCTURES ###
@@ -70,10 +76,21 @@ async def _download_and_process_paper(job: JobInfo) -> ProcessedDocument:
         ProcessedDocument: Fully processed document with all content
         
     Raises:
-        Exception: If PDF download or processing fails
+        Exception: If PDF download or processing fails, or if PDF has too many pages
     """
     print(f"Downloading PDF for arXiv ID: {job.arxiv_id}")
     pdf_data = await fetch_pdf_for_processing(job.arxiv_url or job.arxiv_id)
+    
+    # Check page count before expensive processing
+    print(f"Checking page count for arXiv ID: {job.arxiv_id}")
+    pdf_document = fitz.open(stream=pdf_data.pdf_bytes, filetype="pdf")
+    page_count = pdf_document.page_count
+    pdf_document.close()
+    
+    print(f"PDF has {page_count} pages")
+    
+    if page_count > MAX_PDF_PAGES:
+        raise Exception(f"Too many pages: {page_count} pages (maximum allowed: {MAX_PDF_PAGES})")
     
     print(f"Processing PDF through pipeline")
     processed_document = await process_paper_pdf(pdf_data.pdf_bytes)
