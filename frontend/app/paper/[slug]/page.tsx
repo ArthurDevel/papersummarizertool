@@ -537,7 +537,7 @@ export default function LayoutTestsPage() {
                       ⚡ Quick read
                     </span>
                   </div>
-                  <div className="prose prose-sm sm:prose dark:prose-invert max-w-none">
+                  <div className="prose dark:prose-invert max-w-none">
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm, remarkMath]}
                       rehypePlugins={[[rehypeKatex, { strict: false, throwOnError: false }]]}
@@ -574,7 +574,7 @@ export default function LayoutTestsPage() {
                           ref={(el) => {
                             sectionRefs.current[sectionId] = el;
                           }}
-                          className="prose prose-sm sm:prose dark:prose-invert max-w-none"
+                          className="prose dark:prose-invert max-w-none"
                         >
                           {renderRewrittenSectionContent(section)}
                         </div>
@@ -708,7 +708,7 @@ export default function LayoutTestsPage() {
                   <button onClick={closeModal} className="text-sm px-2 py-1 rounded border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800">Close</button>
                 </div>
                 <div className="flex-1 overflow-auto">
-                  <div className="prose prose-sm dark:prose-invert max-w-none text-sm">
+                  <div className="prose dark:prose-invert max-w-none text-sm">
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm, remarkMath]}
                       rehypePlugins={[[rehypeKatex, { strict: false, throwOnError: false }]]}
