@@ -413,9 +413,9 @@ export default function LayoutTestsPage() {
   };
 
   return (
-    <div className="flex items-start gap-4 p-4 min-h-0 text-gray-900 dark:text-gray-100">
-      {/* Left Sidebar: Sections */}
-      <div className="w-64 flex-shrink-0 sticky top-0 self-start pt-4 pb-4">
+    <div className="flex items-start gap-4 p-2 sm:p-4 min-h-0 text-gray-900 dark:text-gray-100">
+      {/* Left Sidebar: Sections - Hidden on mobile */}
+      <div className="hidden lg:block w-64 flex-shrink-0 sticky top-0 self-start pt-4 pb-4">
         <div
           className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-md overflow-hidden"
           style={{ height: `calc(100vh - ${footerOverlap}px - 2rem)` }}
@@ -483,20 +483,20 @@ export default function LayoutTestsPage() {
       </div>
 
       {/* Content */}
-      <main ref={mainRef} className="flex-1 min-w-0 p-4 flex flex-col">
+      <main ref={mainRef} className="flex-1 min-w-0 p-2 sm:p-4 flex flex-col">
         {paperData ? (
           <>
-            <div className="mb-4 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-md overflow-hidden p-4">
-              <div className="flex items-start gap-4 max-w-full">
+            <div className="mb-4 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-md overflow-hidden p-3 sm:p-4">
+              <div className="flex flex-col sm:flex-row items-start gap-3 sm:gap-4 max-w-full">
                 {(paperData as any)?.thumbnail_data_url && (
                   <img
                     src={(paperData as any).thumbnail_data_url as string}
                     alt="Paper thumbnail"
-                    className="w-24 h-24 rounded-md object-cover flex-shrink-0"
+                    className="w-20 h-20 sm:w-24 sm:h-24 rounded-md object-cover flex-shrink-0 mx-auto sm:mx-0"
                   />
                 )}
-                <div className="min-w-0 flex-1 overflow-hidden break-words">
-                  <h1 className="text-3xl font-bold mb-1 break-words whitespace-normal">{paperData.title || 'Untitled'}</h1>
+                <div className="min-w-0 flex-1 overflow-hidden break-words text-center sm:text-left">
+                  <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold mb-1 break-words whitespace-normal leading-tight">{paperData.title || 'Untitled'}</h1>
                   {paperData.authors && (
                     <p className="text-sm text-gray-700 dark:text-gray-300 mb-1 break-words whitespace-normal">{paperData.authors}</p>
                   )}
@@ -526,8 +526,8 @@ export default function LayoutTestsPage() {
 
             {/* 5-Minute Summary */}
             {paperData.five_minute_summary && (
-              <div ref={summaryRef} className="mb-8 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg shadow-md overflow-hidden">
-                <div className="p-4">
+              <div ref={summaryRef} className="mb-6 sm:mb-8 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg shadow-md overflow-hidden">
+                <div className="p-3 sm:p-4">
                   <div className="flex items-center gap-2 mb-3">
                     <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
                     <h2 className="text-lg font-semibold text-blue-900 dark:text-blue-100">
@@ -537,7 +537,7 @@ export default function LayoutTestsPage() {
                       ⚡ Quick read
                     </span>
                   </div>
-                  <div className="prose dark:prose-invert max-w-none">
+                  <div className="prose prose-sm sm:prose dark:prose-invert max-w-none">
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm, remarkMath]}
                       rehypePlugins={[[rehypeKatex, { strict: false, throwOnError: false }]]}
@@ -551,7 +551,7 @@ export default function LayoutTestsPage() {
 
             {/* Simplified Version */}
             <div className="mb-4 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-md overflow-hidden">
-              <div className="p-4">
+              <div className="p-3 sm:p-4">
                 <div className="flex items-center gap-2 mb-3">
                   <div className="w-2 h-2 bg-gray-500 rounded-full"></div>
                   <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
@@ -574,7 +574,7 @@ export default function LayoutTestsPage() {
                           ref={(el) => {
                             sectionRefs.current[sectionId] = el;
                           }}
-                          className="prose dark:prose-invert max-w-none"
+                          className="prose prose-sm sm:prose dark:prose-invert max-w-none"
                         >
                           {renderRewrittenSectionContent(section)}
                         </div>
@@ -598,8 +598,8 @@ export default function LayoutTestsPage() {
         )}
     </main>
 
-      {/* Right Sidebar: Similar Papers */}
-      <div className="w-64 flex-shrink-0 sticky top-0 self-start pt-4 pb-4">
+      {/* Right Sidebar: Similar Papers - Hidden on mobile */}
+      <div className="hidden lg:block w-64 flex-shrink-0 sticky top-0 self-start pt-4 pb-4">
         <div
           className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-md overflow-hidden"
           style={{ height: `calc(100vh - ${footerOverlap}px - 2rem)` }}
@@ -651,10 +651,13 @@ export default function LayoutTestsPage() {
           </div>
         </div>
       </div>
+
+      {/* No sections on mobile: floating TOC button and drawer removed */}
+
       {isModalOpen && paperData && modalData && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={closeModal}>
-          <div className="bg-white dark:bg-gray-900 w-full max-w-6xl h-[80vh] rounded-lg overflow-hidden shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <div className="flex h-full">
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-2 sm:p-4" onClick={closeModal}>
+          <div className="bg-white dark:bg-gray-900 w-full max-w-6xl h-[95vh] sm:h-[80vh] rounded-lg overflow-hidden shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex flex-col sm:flex-row h-full">
               {/* Left: Full page image, scrollable, with bbox overlay */}
               <div ref={pageImageContainerRef} className="flex-1 relative overflow-auto bg-gray-100 dark:bg-gray-800">
                 {(() => {
@@ -694,7 +697,7 @@ export default function LayoutTestsPage() {
                 })()}
               </div>
               {/* Right: Explanation */}
-              <div className="w-[28rem] border-l border-gray-200 dark:border-gray-700 p-4 flex flex-col">
+              <div className="w-full sm:w-[28rem] border-t sm:border-t-0 sm:border-l border-gray-200 dark:border-gray-700 p-4 flex flex-col max-h-[40vh] sm:max-h-none">
                 <div className="flex items-start justify-between mb-3">
                   <div>
                     <h3 className="text-lg font-semibold">
@@ -705,7 +708,7 @@ export default function LayoutTestsPage() {
                   <button onClick={closeModal} className="text-sm px-2 py-1 rounded border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800">Close</button>
                 </div>
                 <div className="flex-1 overflow-auto">
-                  <div className="prose dark:prose-invert max-w-none text-sm">
+                  <div className="prose prose-sm dark:prose-invert max-w-none text-sm">
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm, remarkMath]}
                       rehypePlugins={[[rehypeKatex, { strict: false, throwOnError: false }]]}
