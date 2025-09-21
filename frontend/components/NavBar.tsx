@@ -111,85 +111,56 @@ export default function NavBar({ className = '' }: NavBarProps) {
         </div>
       </div>
 
-      {/* Mobile Navigation Drawer */}
+      {/* Mobile Navigation Menu */}
       {isMobileMenuOpen && (
-        <>
-          {/* Backdrop */}
-          <div 
-            className="fixed inset-0 z-40 bg-black/50 md:hidden"
-            onClick={closeMobileMenu}
-            aria-hidden="true"
-          />
-          
-          {/* Drawer */}
-          <div className="fixed top-0 right-0 z-50 h-full w-80 max-w-[85vw] bg-white dark:bg-gray-900 shadow-xl md:hidden">
-            <div className="flex flex-col h-full">
-              {/* Header */}
-              <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
-                <span className="text-lg font-semibold text-gray-900 dark:text-gray-100">Menu</span>
-                <button
+        <div className="md:hidden border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+          <div className="px-4 py-4">
+            <nav className="space-y-3 text-center">
+              <Link 
+                href="/papers" 
+                onClick={closeMobileMenu}
+                className="block py-2 text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
+              >
+                All Papers
+              </Link>
+              <Link 
+                href="/arxiv-search" 
+                onClick={closeMobileMenu}
+                className="block py-2 text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
+              >
+                Arxiv Search
+              </Link>
+              <Link
+                href="https://github.com/ArthurDevel/papersummarizertool"
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={closeMobileMenu}
+                className="flex items-center justify-center gap-2 py-2 text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
+              >
+                <Github size={16} />
+                <span>Star us on GitHub</span>
+              </Link>
+              {isLoggedIn ? (
+                <Link
+                  href="/user"
                   onClick={closeMobileMenu}
-                  aria-label="Close menu"
-                  className="p-2 rounded-md text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
+                  className="flex items-center justify-center gap-2 py-2 text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
                 >
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
-              
-              {/* Navigation Links */}
-              <div className="flex-1 overflow-y-auto p-4">
-                <nav className="space-y-2">
-                  <Link 
-                    href="/papers" 
-                    onClick={closeMobileMenu}
-                    className="block px-4 py-3 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-                  >
-                    All Papers
-                  </Link>
-                  <Link 
-                    href="/arxiv-search" 
-                    onClick={closeMobileMenu}
-                    className="block px-4 py-3 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-                  >
-                    Arxiv Search
-                  </Link>
-                  <Link
-                    href="https://github.com/ArthurDevel/papersummarizertool"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={closeMobileMenu}
-                    className="flex items-center gap-3 px-4 py-3 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-                  >
-                    <Github size={18} />
-                    <span>Star us on GitHub</span>
-                  </Link>
-                </nav>
-              </div>
-              
-              {/* User Actions */}
-              <div className="border-t border-gray-200 dark:border-gray-700 p-4">
-                {isLoggedIn ? (
-                  <Link
-                    href="/user"
-                    onClick={closeMobileMenu}
-                    className="flex items-center gap-3 w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-                  >
-                    <UserIcon size={18} />
-                    <span>Your account</span>
-                  </Link>
-                ) : (
-                  <Link
-                    href="/login"
-                    onClick={closeMobileMenu}
-                    className="block w-full px-4 py-3 text-center rounded-lg border border-gray-300 dark:border-gray-700 text-gray-800 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-                  >
-                    Log in
-                  </Link>
-                )}
-              </div>
-            </div>
+                  <UserIcon size={16} />
+                  <span>Your account</span>
+                </Link>
+              ) : (
+                <Link
+                  href="/login"
+                  onClick={closeMobileMenu}
+                  className="block py-2 text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
+                >
+                  Log in
+                </Link>
+              )}
+            </nav>
           </div>
-        </>
+        </div>
       )}
     </nav>
   );
