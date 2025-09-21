@@ -5,6 +5,7 @@ import requests
 from airflow.decorators import dag, task
 from typing import List, Dict, Any
 from contextlib import contextmanager
+from airflow.models import Param
 
 # Add project root to Python path to find shared modules
 sys.path.insert(0, '/opt/airflow')
@@ -49,31 +50,49 @@ def database_session():
     schedule="0 6 * * *",  # 6 AM daily
     catchup=False,
     tags=["huggingface", "papers"],
+    params={
+        "date_to_fetch": Param(
+            type="string",
+            default=pendulum.yesterday().to_date_string(),
+            title="Date to Fetch",
+            description="The date for which to fetch papers, in YYYY-MM-DD format."
+        ),
+        "papers_to_add": Param(
+            type="integer",
+            default=5,
+            title="Number of Papers to Add",
+            description="The number of top papers to add to the processing queue.",
+            minimum=1,
+            maximum=50
+        )
+    },
     doc_md="""
     ### Daily Hugging Face Papers DAG
 
-    This DAG fetches yesterday's daily papers from Hugging Face and prints their titles and star counts.
-    Runs daily at 6 AM UTC.
+    This DAG fetches daily papers from Hugging Face for a specified date and adds the top N papers to the processing queue.
+    - When run on its daily schedule, it fetches papers for the previous day.
+    - When run manually, you can specify a date and the number of papers to add.
     """,
 )
 def daily_huggingface_papers_dag():
     
     @task
-    def fetch_yesterday_papers() -> List[Dict[str, Any]]:
+    def fetch_daily_papers(date_to_fetch: str) -> List[Dict[str, Any]]:
         """
-        Fetch papers from Hugging Face daily papers API for yesterday's date.
+        Fetch papers from Hugging Face daily papers API for a specific date.
         
+        Args:
+            date_to_fetch: The date to fetch papers for, in YYYY-MM-DD format.
+
         Returns:
-            List[Dict[str, Any]]: List of paper data from the API for yesterday
+            List[Dict[str, Any]]: List of paper data from the API
             
         Raises:
             Exception: If API call fails or returns invalid data
         """
-        # Calculate yesterday's date
-        yesterday = pendulum.yesterday().format('YYYY-MM-DD')
-        api_url_with_date = f"{HUGGINGFACE_API_URL}?date={yesterday}"
+        api_url_with_date = f"{HUGGINGFACE_API_URL}?date={date_to_fetch}"
         
-        print(f"Fetching papers for {yesterday} from: {api_url_with_date}")
+        print(f"Fetching papers for {date_to_fetch} from: {api_url_with_date}")
         
         try:
             response = requests.get(api_url_with_date, timeout=30)
@@ -87,13 +106,14 @@ def daily_huggingface_papers_dag():
             raise Exception(f"Invalid JSON response from Hugging Face API: {e}")
             
         if not papers_data:
-            raise Exception(f"No papers found for {yesterday}")
+            print(f"No papers found for {date_to_fetch}")
+            return [] # Return empty list, not an exception, to allow DAG to complete gracefully
             
-        print(f"Successfully fetched {len(papers_data)} papers for {yesterday}")
+        print(f"Successfully fetched {len(papers_data)} papers for {date_to_fetch}")
         return papers_data
     
     @task  
-    def print_papers_info(papers_data: List[Dict[str, Any]]) -> None:
+    def print_papers_info(papers_data: List[Dict[str, Any]], date_to_fetch: str) -> None:
         """
         Print paper titles, rankings, and details to console.
         
@@ -116,8 +136,7 @@ def daily_huggingface_papers_dag():
         except Exception as e:
             raise Exception(f"Failed to sort papers by upvotes: {e}")
             
-        yesterday = pendulum.yesterday().format('YYYY-MM-DD')
-        print(f"\n=== Yesterday's Papers ({yesterday}) - Ranked by Upvotes ({len(sorted_papers)} papers) ===\n")
+        print(f"\n=== Papers for {date_to_fetch} - Ranked by Upvotes ({len(sorted_papers)} papers) ===\n")
         
         # Step 2: Print each paper with ranking
         for rank, paper_item in enumerate(sorted_papers, 1):
@@ -145,12 +164,13 @@ def daily_huggingface_papers_dag():
         print(f"\n=== End of Daily Papers Ranking ===\n")
     
     @task
-    def add_top_papers_to_queue(papers_data: List[Dict[str, Any]]) -> None:
+    def add_top_papers_to_queue(papers_data: List[Dict[str, Any]], papers_to_add: int) -> None:
         """
-        Add top 5 papers to processing queue with popularity signals.
+        Add top N papers to processing queue with popularity signals.
         
         Args:
-            papers_data: List of paper data from the API (already sorted by upvotes)
+            papers_data: List of paper data from the API
+            papers_to_add: The number of top papers to add to the queue.
             
         Raises:
             Exception: If database operations fail
@@ -158,12 +178,14 @@ def daily_huggingface_papers_dag():
         if not papers_data:
             print("No papers to add to queue")
             return
+
+        papers_to_add = int(papers_to_add)
         
         with database_session() as session:
             added_count = 0
             skipped_count = 0
             
-            for rank, paper_item in enumerate(papers_data[:5], 1):
+            for rank, paper_item in enumerate(papers_data[:papers_to_add], 1):
                 try:
                     paper = paper_item.get('paper', {})
                     arxiv_id = paper.get('id')
@@ -231,9 +253,12 @@ def daily_huggingface_papers_dag():
             print(f"===========================\n")
         
     # Define task dependencies
-    papers = fetch_yesterday_papers()
-    print_papers_info(papers)
-    add_top_papers_to_queue(papers)
+    date_str = "{{ params.date_to_fetch }}"
+    num_papers = "{{ params.papers_to_add }}"
+
+    papers = fetch_daily_papers(date_to_fetch=date_str)
+    print_papers_info(papers, date_to_fetch=date_str)
+    add_top_papers_to_queue(papers, papers_to_add=num_papers)
 
 
 daily_huggingface_papers_dag()
