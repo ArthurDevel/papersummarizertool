@@ -10,33 +10,24 @@ RUN apt-get update && \
     && apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Copy requirements file while still root
-COPY airflow/requirements.txt .
-
-# --- FIX HERE ---
-# Run all pip installs as root to allow compilation
-RUN pip install --no-cache-dir -r requirements.txt
-RUN pip install --no-cache-dir requests
-
-RUN pip install apache-airflow-providers-google --force-reinstall 
-
-# Switch back to the non-privileged airflow user for runtime
+# Switch to airflow user before pip installs
 USER airflow
 
-# Copy shared modules needed by DAGs (excluding entrypoint.sh)
+# Copy requirements file
+COPY airflow/requirements.txt .
+
+# Run pip installs as airflow user with --user flag
+RUN pip install --user --no-cache-dir -r requirements.txt
+RUN pip install --user --no-cache-dir requests
+
+# Copy shared modules needed by DAGs
 COPY shared /opt/airflow/shared
 COPY papers /opt/airflow/papers
 COPY users /opt/airflow/users
 COPY paperprocessor /opt/airflow/paperprocessor
 
-# Remove any entrypoint.sh that might have been copied
-RUN rm -f /opt/airflow/entrypoint.sh /usr/local/bin/entrypoint.sh /entrypoint.sh
-
 # Make sure PATH includes airflow binaries
 ENV PATH="/home/airflow/.local/bin:$PATH"
-
-# Override any inherited entrypoint (clear it completely)
-ENTRYPOINT []
 
 # Init-specific command
 CMD ["bash", "-c", "airflow db init && airflow users create --username admin --password admin --firstname Anonymous --lastname User --role Admin --email admin@example.org"]
