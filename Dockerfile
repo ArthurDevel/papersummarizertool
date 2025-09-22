@@ -66,4 +66,4 @@ EXPOSE ${CONTAINERPORT_FRONTEND:-3000}
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 
 # Start both backend and frontend services directly
-CMD ["sh", "-c", "uvicorn api.main:app --host 0.0.0.0 --port ${CONTAINERPORT_API:-8000} & cd frontend && npm start"] 
+CMD ["sh", "-c", "uvicorn api.main:app --host 0.0.0.0 --port ${CONTAINERPORT_API:-8000} & cd frontend && PORT=${CONTAINERPORT_FRONTEND:-3000} npm start"]
