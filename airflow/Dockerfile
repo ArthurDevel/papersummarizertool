@@ -10,22 +10,24 @@ RUN apt-get update && \
     && apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Copy requirements file while still root
-COPY airflow/requirements.txt .
-
-# Switch back to the non-privileged airflow user for runtime
+# Switch to airflow user before pip installs
 USER airflow
 
-# --- FIX HERE ---
-# Run all pip installs as root to allow compilation
-RUN pip install --no-cache-dir -r requirements.txt
-RUN pip install --no-cache-dir requests
+# Copy requirements file
+COPY airflow/requirements.txt .
 
+# Run pip installs as airflow user with --user flag
+RUN pip install --user --no-cache-dir -r requirements.txt
+RUN pip install --user --no-cache-dir requests
 
-
-
-# Copy shared modules needed by DAGs
+# Copy DAGs and shared modules
+COPY airflow/dags /opt/airflow/dags
 COPY shared /opt/airflow/shared
 COPY papers /opt/airflow/papers
 COPY users /opt/airflow/users
 COPY paperprocessor /opt/airflow/paperprocessor
+
+# Make sure PATH includes airflow binaries
+ENV PATH="/home/airflow/.local/bin:$PATH"
+
+# No CMD - Railway will handle different start commands per service
