@@ -23,14 +23,20 @@ RUN pip install apache-airflow-providers-google --force-reinstall
 # Switch back to the non-privileged airflow user for runtime
 USER airflow
 
-# Copy shared modules needed by DAGs
+# Copy shared modules needed by DAGs (excluding entrypoint.sh)
 COPY shared /opt/airflow/shared
 COPY papers /opt/airflow/papers
 COPY users /opt/airflow/users
 COPY paperprocessor /opt/airflow/paperprocessor
 
+# Remove any entrypoint.sh that might have been copied
+RUN rm -f /opt/airflow/entrypoint.sh /usr/local/bin/entrypoint.sh /entrypoint.sh
+
 # Make sure PATH includes airflow binaries
 ENV PATH="/home/airflow/.local/bin:$PATH"
+
+# Override any inherited entrypoint (clear it completely)
+ENTRYPOINT []
 
 # Init-specific command
 CMD ["bash", "-c", "airflow db init && airflow users create --username admin --password admin --firstname Anonymous --lastname User --role Admin --email admin@example.org"]
