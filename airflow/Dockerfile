@@ -13,16 +13,16 @@ RUN apt-get update && \
 # Copy requirements file while still root
 COPY airflow/requirements.txt .
 
+# Switch back to the non-privileged airflow user for runtime
+USER airflow
+
 # --- FIX HERE ---
 # Run all pip installs as root to allow compilation
 RUN pip install --no-cache-dir -r requirements.txt
 RUN pip install --no-cache-dir requests
 
-RUN pip install apache-airflow-providers-google --force-reinstall 
 
 
-# Switch back to the non-privileged airflow user for runtime
-USER airflow
 
 # Copy shared modules needed by DAGs
 COPY shared /opt/airflow/shared

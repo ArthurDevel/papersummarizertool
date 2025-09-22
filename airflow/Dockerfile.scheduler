@@ -20,7 +20,8 @@ COPY airflow/requirements.txt .
 RUN pip install --user --no-cache-dir -r requirements.txt
 RUN pip install --user --no-cache-dir requests
 
-# Copy shared modules needed by DAGs
+# Copy DAGs and shared modules
+COPY airflow/dags /opt/airflow/dags
 COPY shared /opt/airflow/shared
 COPY papers /opt/airflow/papers
 COPY users /opt/airflow/users
