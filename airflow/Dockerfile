@@ -30,4 +30,7 @@ COPY paperprocessor /opt/airflow/paperprocessor
 # Make sure PATH includes airflow binaries
 ENV PATH="/home/airflow/.local/bin:$PATH"
 
+# Expose port 8080 for webserver (doesn't affect scheduler/init services)
+EXPOSE 8080
+
 # No CMD - Railway will handle different start commands per service
