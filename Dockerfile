@@ -59,8 +59,7 @@ COPY entrypoint.sh /usr/local/bin/
 # Make entrypoint script executable
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
-# Expose ports for backend and frontend
-EXPOSE ${CONTAINERPORT_API:-8000}
+# Expose ports for frontend only, as backend is accessed via the proxy.
 EXPOSE ${CONTAINERPORT_FRONTEND:-3000}
 
 # Set the entrypoint script
