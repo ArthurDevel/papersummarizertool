@@ -30,5 +30,5 @@ COPY paperprocessor /opt/airflow/paperprocessor
 # Make sure PATH includes airflow binaries
 ENV PATH="/home/airflow/.local/bin:$PATH"
 
-# Init-specific command
-CMD ["bash", "-c", "airflow db init && airflow users create --username admin --password admin --firstname Anonymous --lastname User --role Admin --email admin@example.org"]
+# Init-specific command that exits after completion
+CMD ["bash", "-c", "airflow db init && airflow users create --username admin --password admin --firstname Anonymous --lastname User --role Admin --email admin@example.org && echo 'Initialization complete' && exit 0"]
