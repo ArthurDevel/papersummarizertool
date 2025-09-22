@@ -6,18 +6,21 @@ We use **one Dockerfile** for all 3 Airflow services (init, webserver, scheduler
 **Why single Dockerfile:**
 - Matches local development pattern (docker-compose uses same image)
 - Easier maintenance (change dependencies once, not 3 times)
-- Seamless developer experience - see [local development setup](README-LOCALDEVELOPMENT.md)
+- Keeps hot-reloading developer experience intact - see [local development setup](README-LOCALDEVELOPMENT.md)
 
-**Alternative considered:** 3 separate Dockerfiles (rejected for complexity)
+Some setup that is happening inside `docker-compose.yml` now needs to happen on Railway (see start commands below)
 
 ## Airflow Services
 
 **Environment Variable:**
+Add this to the Airflow containers on Railway.
+
 ```
 RAILWAY_DOCKERFILE_PATH=airflow/Dockerfile
 ```
 
 **Start Commands:**
+Add these to each Airflow container.
 - **airflow-init**: `bash -c "airflow db init && airflow users create --username admin --password admin --firstname Anonymous --lastname User --role Admin --email admin@example.org && echo 'Initialization complete' && exit 0"`
 - **airflow-webserver**: `airflow webserver`
 - **airflow-scheduler**: `airflow scheduler`
