@@ -23,3 +23,6 @@ qdrant-client
 httpx
 aiohttp
 email-validator
+
+# Fix protobuf version conflicts
+protobuf==3.20.3
