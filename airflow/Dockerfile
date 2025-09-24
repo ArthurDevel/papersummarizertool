@@ -30,6 +30,11 @@ COPY paperprocessor /opt/airflow/paperprocessor
 # Make sure PATH includes airflow binaries
 ENV PATH="/home/airflow/.local/bin:$PATH"
 
+# Force Airflow to use INFO level logging and send it to stdout.
+# This makes DAG parsing and scheduler logs visible in container logs (e.g., on Railway).
+ENV AIRFLOW__LOGGING__LOGGING_LEVEL=INFO
+ENV AIRFLOW__LOGGING__REMOTE_LOGGING=False
+
 # Expose port 8080 for webserver (doesn't affect scheduler/init services)
 EXPOSE 8080
 
