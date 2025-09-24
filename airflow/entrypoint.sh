@@ -3,7 +3,9 @@
 # Set up volume permissions if directory exists
 if [ -d "/opt/airflow-data" ]; then
     sudo mkdir -p /opt/airflow-data/{dags,logs,plugins}
-    sudo chown -R airflow:airflow /opt/airflow-data
+    # Use just the airflow user, not group (Railway may not have airflow group)
+    sudo chown -R airflow /opt/airflow-data
+    sudo chmod -R 755 /opt/airflow-data
 fi
 
 # Initialize Airflow database and create admin user
