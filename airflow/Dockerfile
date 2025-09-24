@@ -1,4 +1,4 @@
-FROM apache/airflow:2.10.1-python3.11
+FROM apache/airflow:2.8.1
 
 # Switch to root to install system-level packages
 USER root
@@ -16,9 +16,9 @@ USER airflow
 # Copy requirements file
 COPY airflow/requirements.txt .
 
-# Run pip installs as airflow user without --user flag
-RUN pip install --no-cache-dir -r requirements.txt
-RUN pip install --no-cache-dir requests
+# Run pip installs as airflow user with --user flag
+RUN pip install --user --no-cache-dir -r requirements.txt
+RUN pip install --user --no-cache-dir requests
 
 # Copy DAGs and shared modules
 COPY airflow/dags /opt/airflow/dags
@@ -29,11 +29,6 @@ COPY paperprocessor /opt/airflow/paperprocessor
 
 # Make sure PATH includes airflow binaries
 ENV PATH="/home/airflow/.local/bin:$PATH"
-
-# Force Airflow to use INFO level logging and send it to stdout.
-# This makes DAG parsing and scheduler logs visible in container logs (e.g., on Railway).
-ENV AIRFLOW__LOGGING__LOGGING_LEVEL=INFO
-ENV AIRFLOW__LOGGING__REMOTE_LOGGING=False
 
 # Expose port 8080 for webserver (doesn't affect scheduler/init services)
 EXPOSE 8080

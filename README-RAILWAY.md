@@ -12,12 +12,15 @@ Some setup that is happening inside `docker-compose.yml` now needs to happen on 
 
 ## Airflow Services
 
-**Environment Variable:**
-Add this to the Airflow containers on Railway.
+**Environment Variables:**
+Add this to ALL Airflow containers on Railway:
 
 ```
 RAILWAY_DOCKERFILE_PATH=airflow/Dockerfile
 ```
+
+**CRITICAL:** If your DAGs import modules that require environment variables (like database credentials, API keys, etc.), you MUST add those environment variables to the **airflow-scheduler** service specifically. The scheduler is where DAGs actually execute - the webserver only provides the UI.
+
 
 **Start Commands:**
 Add these to each Airflow container.
