@@ -113,7 +113,7 @@ services:
       - "${HOSTPORT_QDRANT:-6333}:${CONTAINERPORT_QDRANT:-6333}"
       - "${HOSTPORT_QDRANT_GRPC:-6334}:${CONTAINERPORT_QDRANT_GRPC:-6334}"
     volumes:
-      - qdrant-data:/qdrant/storage
+      - ./data/qdrant:/qdrant/storage
 
 
   #--------------------------------------------------------------------------
@@ -132,7 +132,7 @@ services:
       - POSTGRES_PASSWORD=airflow
       - POSTGRES_DB=airflow
     volumes:
-      - airflow-postgres-data:/var/lib/postgresql/data
+      - ./data/airflow-postgres:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "airflow"]
       interval: 5s
@@ -173,6 +173,5 @@ services:
         condition: service_completed_successfully
 
 volumes:
-  qdrant-data: 
-  feedbackrouter-mysql-data:
-  airflow-postgres-data:
+  qdrant: 
+  airflow-postgres:

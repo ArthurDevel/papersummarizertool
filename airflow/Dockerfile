@@ -7,6 +7,8 @@ RUN apt-get update && \
         default-libmysqlclient-dev \
         build-essential \
         g++ \
+        supervisor \
+        sudo \
     && apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
@@ -30,7 +32,19 @@ COPY paperprocessor /opt/airflow/paperprocessor
 # Make sure PATH includes airflow binaries
 ENV PATH="/home/airflow/.local/bin:$PATH"
 
-# Expose port 8080 for webserver (doesn't affect scheduler/init services)
+# Copy supervisord configuration
+USER root
+COPY airflow/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+
+# Allow airflow user to use sudo without password for directory setup
+RUN echo "airflow ALL=(ALL) NOPASSWD: /bin/mkdir, /bin/chown" >> /etc/sudoers
+
+# Create entrypoint script
+COPY airflow/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# Expose port 8080 for webserver
 EXPOSE 8080
 
-# No CMD - Railway will handle different start commands per service
+USER airflow
+ENTRYPOINT ["/entrypoint.sh"]
