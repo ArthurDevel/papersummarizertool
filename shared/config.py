@@ -2,6 +2,14 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import model_validator, Field
 from typing import Optional, Any, Dict
 import os
+import pprint
+
+# --- TEMPORARY DEBUGGING ---
+# Print all available environment variables to diagnose Railway configuration.
+print("--- Printing all available environment variables for debugging ---")
+pprint.pprint(dict(os.environ))
+print("-----------------------------------------------------------------")
+# --- END TEMPORARY DEBUGGING ---
 
 # Load environment variables from .env file.
 # `override=True` ensures that the .env file takes precedence over system environment variables.
