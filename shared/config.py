@@ -2,13 +2,15 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import model_validator, Field
 from typing import Optional, Any, Dict
 import os
-import pprint
+import logging
 
 # --- TEMPORARY DEBUGGING ---
-# Print all available environment variables to diagnose Railway configuration.
-print("--- Printing all available environment variables for debugging ---")
-pprint.pprint(dict(os.environ))
-print("-----------------------------------------------------------------")
+# Use logging instead of print to ensure visibility in Railway logs.
+logging.basicConfig(level=logging.INFO)
+log = logging.getLogger(__name__)
+log.info("--- Checking environment variables for debugging ---")
+log.info(f"Available environment variables: {dict(os.environ)}")
+log.info("----------------------------------------------------")
 # --- END TEMPORARY DEBUGGING ---
 
 # Load environment variables from .env file.
