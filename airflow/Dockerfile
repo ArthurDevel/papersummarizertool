@@ -29,6 +29,14 @@ COPY papers /opt/airflow/papers
 COPY users /opt/airflow/users
 COPY paperprocessor /opt/airflow/paperprocessor
 
+# Create debugging output directory for paperprocessor (Railway deployment fix)
+# This resolves Permission denied errors when paperprocessor tries to write debug files
+USER root
+RUN mkdir -p /opt/airflow/paperprocessor/debugging_output && \
+    chown airflow:root /opt/airflow/paperprocessor/debugging_output && \
+    chmod 755 /opt/airflow/paperprocessor/debugging_output
+USER airflow
+
 # Make sure PATH includes airflow binaries
 ENV PATH="/home/airflow/.local/bin:$PATH"
 
