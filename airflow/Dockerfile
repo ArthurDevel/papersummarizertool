@@ -3,22 +3,48 @@ FROM apache/airflow:2.8.1
 # Switch to root to install system-level packages
 USER root
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends default-libmysqlclient-dev && \
-    apt-get clean && \
+    apt-get install -y --no-install-recommends \
+        default-libmysqlclient-dev \
+        build-essential \
+        g++ \
+        supervisor \
+        sudo \
+    && apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Switch back to the non-privileged airflow user
+# Switch to airflow user before pip installs
 USER airflow
 
-# Copy and install the Airflow-specific Python requirements
+# Copy requirements file
 COPY airflow/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
 
-# Install any additional packages needed by DAGs
-RUN pip install --no-cache-dir requests
+# Run pip installs as airflow user with --user flag
+RUN pip install --user --no-cache-dir -r requirements.txt
+RUN pip install --user --no-cache-dir requests
 
-# Copy shared modules needed by DAGs
+# Copy DAGs and shared modules
+COPY airflow/dags /opt/airflow/dags
 COPY shared /opt/airflow/shared
 COPY papers /opt/airflow/papers
 COPY users /opt/airflow/users
 COPY paperprocessor /opt/airflow/paperprocessor
+
+# Make sure PATH includes airflow binaries
+ENV PATH="/home/airflow/.local/bin:$PATH"
+
+# Copy supervisord configuration
+USER root
+COPY airflow/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+
+# Allow airflow user to use sudo without password for directory setup
+RUN echo "airflow ALL=(ALL) NOPASSWD: /bin/mkdir, /bin/chown" >> /etc/sudoers
+
+# Create entrypoint script
+COPY airflow/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# Expose port 8080 for webserver
+EXPOSE 8080
+
+USER airflow
+ENTRYPOINT ["/entrypoint.sh"]

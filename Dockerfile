@@ -59,12 +59,11 @@ COPY entrypoint.sh /usr/local/bin/
 # Make entrypoint script executable
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
-# Expose ports for backend and frontend
-EXPOSE ${CONTAINERPORT_API:-8000}
+# Expose ports for frontend only, as backend is accessed via the proxy.
 EXPOSE ${CONTAINERPORT_FRONTEND:-3000}
 
 # Set the entrypoint script
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 
 # Start both backend and frontend services directly
-CMD ["sh", "-c", "uvicorn api.main:app --host 0.0.0.0 --port ${CONTAINERPORT_API:-8000} & cd frontend && npm start"] 
+CMD ["sh", "-c", "uvicorn api.main:app --host 0.0.0.0 --port ${CONTAINERPORT_API:-8000} & cd frontend && PORT=${CONTAINERPORT_FRONTEND:-3000} npm start"]
