@@ -1,15 +1,24 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import model_validator, Field
-from dotenv import load_dotenv
 from typing import Optional, Any, Dict
 import os
 
 # Load environment variables from .env file.
 # `override=True` ensures that the .env file takes precedence over system environment variables.
-load_dotenv(override=True)
+# load_dotenv(override=True)
 
 class Settings(BaseSettings):
    
+    model_config = SettingsConfigDict(
+        # If you have a .env file, this will load it.
+        # However, it will not override existing environment variables.
+        env_file=".env",
+        env_file_encoding="utf-8",
+        # Pydantic will now prioritize environment variables over .env file values
+        # which is the desired behavior for Railway.
+        extra="ignore"
+    )
+
     CONTAINERPORT_API: int = 8000
     CONTAINERPORT_FRONTEND: int = 3000
     OPENROUTER_API_KEY: str
