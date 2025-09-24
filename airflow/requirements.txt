@@ -3,8 +3,11 @@ requests
 mysqlclient
 sqlalchemy
 pydantic
-pydantic-settings
-python-dotenv
+pydantic-settings==2.10.1
+python-dotenv==1.0.0
+# Fixes dependency conflict with Airflow's built-in Google provider
+# See: https://stackoverflow.com/questions/74484963/attributeerror-module-google-upb-message-has-no-attribute-messagemapcontain
+protobuf==3.20.3
 pymysql
 pendulum
 

@@ -1,4 +1,4 @@
-FROM apache/airflow:2.8.1
+FROM apache/airflow:2.10.1-python3.11
 
 # Switch to root to install system-level packages
 USER root
@@ -16,9 +16,9 @@ USER airflow
 # Copy requirements file
 COPY airflow/requirements.txt .
 
-# Run pip installs as airflow user with --user flag
-RUN pip install --user --no-cache-dir -r requirements.txt
-RUN pip install --user --no-cache-dir requests
+# Run pip installs as airflow user without --user flag
+RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir requests
 
 # Copy DAGs and shared modules
 COPY airflow/dags /opt/airflow/dags
