@@ -67,3 +67,4 @@ unittests.cfg
 paperprocessor/debugging_output/header_formatter_final_markdown.md
 paperprocessor/debugging_output/structure_extractor_headers.json
 paperprocessor/debugging_output/structure_extractor_structure.json
+logs/scheduler/latest
