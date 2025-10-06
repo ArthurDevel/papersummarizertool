@@ -29,9 +29,38 @@ def _migrate_json_files_to_database() -> dict:
     Returns:
         dict: Summary of migration results
     """
-    # Step 1: Check if directory exists and has JSON files
+    # Step 1: Log directory structure for debugging
+    print(f"=== Directory Structure Debug ===")
+    print(f"Current working directory: {os.getcwd()}")
+    print(f"PAPER_JSON_DIR environment variable: {os.environ.get('PAPER_JSON_DIR', 'NOT SET')}")
+    print(f"Looking for JSON files in: {PAPER_JSON_DIR}")
+    print(f"Directory exists: {os.path.exists(PAPER_JSON_DIR)}")
+    
+    # List parent directory contents
+    parent_dir = os.path.dirname(PAPER_JSON_DIR)
+    if os.path.exists(parent_dir):
+        print(f"\nContents of parent directory ({parent_dir}):")
+        try:
+            for item in os.listdir(parent_dir):
+                item_path = os.path.join(parent_dir, item)
+                item_type = "DIR" if os.path.isdir(item_path) else "FILE"
+                print(f"  [{item_type}] {item}")
+        except Exception as e:
+            print(f"  Error listing parent: {e}")
+    
+    # List current working directory
+    print(f"\nContents of current directory ({os.getcwd()}):")
+    try:
+        for item in os.listdir(os.getcwd()):
+            item_path = os.path.join(os.getcwd(), item)
+            item_type = "DIR" if os.path.isdir(item_path) else "FILE"
+            print(f"  [{item_type}] {item}")
+    except Exception as e:
+        print(f"  Error listing current dir: {e}")
+    
+    # Check if directory exists and has JSON files
     if not os.path.exists(PAPER_JSON_DIR):
-        print(f"No JSON directory found at {PAPER_JSON_DIR}. Nothing to migrate.")
+        print(f"\nNo JSON directory found at {PAPER_JSON_DIR}. Nothing to migrate.")
         return {"migrated": 0, "deleted": 0, "skipped": 0, "errors": 0}
     
     try:
