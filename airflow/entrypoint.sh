@@ -6,11 +6,9 @@ if [ -d "/opt/airflow-data" ]; then
     # Skip ownership changes on Railway if they fail
     chmod -R 755 /opt/airflow-data 2>/dev/null || true
     
-    # Copy DAGs from container to volume if volume is empty
-    if [ ! "$(ls -A /opt/airflow-data/dags)" ]; then
-        echo "Copying DAGs to volume..."
-        cp -r /opt/airflow/dags/* /opt/airflow-data/dags/ 2>/dev/null || true
-    fi
+    # Sync DAGs from container to volume (always update on deploy)
+    echo "Syncing DAGs to volume..."
+    cp -r /opt/airflow/dags/* /opt/airflow-data/dags/ 2>/dev/null || true
 fi
 
 # Add shared modules to Python path so DAGs can import them
