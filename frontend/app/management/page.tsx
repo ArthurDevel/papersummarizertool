@@ -4,17 +4,7 @@ import { useEffect, useState } from 'react';
 import { listPapers, listRequestedPapers, deleteRequestedPaper, enqueueArxiv, type JobDbStatus, type RequestedPaper } from '../../services/api';
 import Link from 'next/link';
 
-type ListItem = {
-  id: string;
-  title: string;
-  created_at?: string;
-  total_cost?: number;
-  total_tokens?: number;
-  processing_time_seconds?: number;
-};
-
 export default function ManagementPage() {
-  const [papers, setPapers] = useState<ListItem[]>([]);
   const [dbPapers, setDbPapers] = useState<JobDbStatus[]>([]);
   const [requested, setRequested] = useState<RequestedPaper[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -32,32 +22,6 @@ export default function ManagementPage() {
         // Load requested papers
         const requestedList = await listRequestedPapers();
         setRequested(requestedList);
-        // List from preloaded files and enrich each with summary fields
-        const res = await fetch('/layouttests/data', { cache: 'no-store' });
-        if (!res.ok) throw new Error(`Failed to list: ${res.status}`);
-        const data = await res.json();
-        const files: string[] = Array.isArray(data?.files) ? data.files : [];
-        // Fetch each JSON to extract summary fields (best effort)
-        const items: ListItem[] = await Promise.all(
-          files.map(async (f) => {
-            try {
-              const detailRes = await fetch(`/layouttests/data?file=${encodeURIComponent(f)}`, { cache: 'no-store' });
-              if (!detailRes.ok) throw new Error('detail fetch failed');
-              const json = await detailRes.json();
-              const usage = json?.usage_summary;
-              return {
-                id: f.replace(/\.json$/i, ''),
-                title: f,
-                total_cost: typeof usage?.total_cost === 'number' ? usage.total_cost : undefined,
-                total_tokens: typeof usage?.total_tokens === 'number' ? usage.total_tokens : undefined,
-                processing_time_seconds: typeof json?.processing_time_seconds === 'number' ? json.processing_time_seconds : undefined,
-              } as ListItem;
-            } catch {
-              return { id: f.replace(/\.json$/i, ''), title: f } as ListItem;
-            }
-          })
-        );
-        setPapers(items);
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Unknown error');
       } finally {
@@ -91,30 +55,6 @@ export default function ManagementPage() {
         // Refresh DB list
         const dbList = await listPapers();
         setDbPapers(dbList);
-        // Refresh local JSON files list
-        const listRes = await fetch('/layouttests/data', { cache: 'no-store' });
-        const listJson = await listRes.json();
-        const files: string[] = Array.isArray(listJson?.files) ? listJson.files : [];
-        const items: ListItem[] = await Promise.all(
-          files.map(async (f) => {
-            try {
-              const detailRes = await fetch(`/layouttests/data?file=${encodeURIComponent(f)}`, { cache: 'no-store' });
-              if (!detailRes.ok) throw new Error('detail fetch failed');
-              const json = await detailRes.json();
-              const usage = json?.usage_summary;
-              return {
-                id: f.replace(/\.json$/i, ''),
-                title: f,
-                total_cost: typeof usage?.total_cost === 'number' ? usage.total_cost : undefined,
-                total_tokens: typeof usage?.total_tokens === 'number' ? usage.total_tokens : undefined,
-                processing_time_seconds: typeof json?.processing_time_seconds === 'number' ? json.processing_time_seconds : undefined,
-              } as ListItem;
-            } catch {
-              return { id: f.replace(/\.json$/i, ''), title: f } as ListItem;
-            }
-          })
-        );
-        setPapers(items);
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Invalid JSON file');
       } finally {
@@ -400,8 +340,6 @@ export default function ManagementPage() {
                                   }
                                   const dbList = await listPapers();
                                   setDbPapers(dbList);
-                                  // Also proactively remove local JSON from the local table if present
-                                  setPapers((prev) => prev.filter((x) => x.id !== r.paper_uuid));
                                 } catch (e) {
                                   setError(e instanceof Error ? e.message : 'Failed to delete');
                                 } finally {
@@ -421,107 +359,6 @@ export default function ManagementPage() {
                     <tr>
                       <td colSpan={13} className="px-6 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
                         No papers found in database.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <div className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-sm">
-            <div className="px-6 py-3 text-sm font-semibold border-b border-gray-200 dark:border-gray-700">Local JSON Files</div>
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                <thead className="bg-gray-50 dark:bg-gray-700/50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Title</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">ID</th>
-                    <th className="px-6 py-3" />
-                  </tr>
-                </thead>
-                <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                  {papers.map((p) => (
-                    <tr key={p.id}>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        <div className="flex flex-col">
-                          <span>{p.title}</span>
-                          <span className="text-xs text-gray-500 dark:text-gray-400">
-                            {typeof p.total_cost === 'number' ? `Cost: $${p.total_cost.toFixed(4)}` : 'Cost: N/A'}
-                            {typeof p.total_tokens === 'number' ? ` • Tokens: ${p.total_tokens}` : ''}
-                            {typeof p.processing_time_seconds === 'number' ? ` • Time: ${p.processing_time_seconds.toFixed(2)}s` : ''}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{p.id}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
-                        <div className="flex items-center gap-3 justify-end">
-                          <button
-                            className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
-                            onClick={async () => {
-                              try {
-                                setIsLoading(true);
-                                setError(null);
-                                const paperUuid = p.id;
-                                // Try to get an existing slug
-                                const res = await fetch(`/api/papers/${encodeURIComponent(paperUuid)}/slug`, { cache: 'no-store' });
-                                if (res.ok) {
-                                  const payload = await res.json();
-                                  const slug: string | undefined = payload?.slug;
-                                  if (slug) {
-                                    window.location.href = `/paper/${encodeURIComponent(slug)}`;
-                                    return;
-                                  }
-                                }
-                                // If slug not found, attempt to create one
-                                const createRes = await fetch(`/api/papers/${encodeURIComponent(paperUuid)}/slug`, { method: 'POST' });
-                                if (createRes.ok) {
-                                  const payload = await createRes.json();
-                                  const slug: string | undefined = payload?.slug;
-                                  if (slug) {
-                                    window.location.href = `/paper/${encodeURIComponent(slug)}`;
-                                    return;
-                                  }
-                                }
-                                throw new Error('Slug not found or cannot be created');
-                              } catch (e) {
-                                setError(e instanceof Error ? e.message : 'Failed to open via slug');
-                              } finally {
-                                setIsLoading(false);
-                              }
-                            }}
-                          >
-                            View
-                          </button>
-                          <button
-                            className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300"
-                            onClick={async () => {
-                              try {
-                                if (!confirm(`Delete ${p.title}? This cannot be undone.`)) return;
-                                setIsLoading(true);
-                                setError(null);
-                                const res = await fetch(`/layouttests/data?file=${encodeURIComponent(p.title)}`, { method: 'DELETE' });
-                                const payload = await res.json().catch(() => ({}));
-                                if (!res.ok) throw new Error(payload?.error || `Delete failed (${res.status})`);
-                                // Remove from state
-                                setPapers((prev) => prev.filter((x) => x.id !== p.id));
-                              } catch (e) {
-                                setError(e instanceof Error ? e.message : 'Failed to delete');
-                              } finally {
-                                setIsLoading(false);
-                              }
-                            }}
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                  {papers.length === 0 && (
-                    <tr>
-                      <td colSpan={3} className="px-6 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
-                        No papers found.
                       </td>
                     </tr>
                   )}
