@@ -14,7 +14,6 @@ import json
 from sqlalchemy.orm import Session
 from shared.db import SessionLocal
 from papers.db.models import PaperRecord
-from papers.client import get_processed_result_path
 
 
 ### MAIN FUNCTION ###
@@ -25,6 +24,7 @@ def migrate_json_files_to_database():
     Deletes local files if they're already in the database.
     """
     # Step 1: Determine the base directory for JSON files
+    # Use PAPER_JSON_DIR env var or default to data/paperjsons in current directory
     base_dir = os.path.abspath(os.environ.get("PAPER_JSON_DIR", os.path.join(os.getcwd(), 'data', 'paperjsons')))
     
     # Step 2: Check if directory exists and has JSON files
