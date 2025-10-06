@@ -1,11 +1,8 @@
 from __future__ import annotations
 
 from datetime import datetime
-from functools import lru_cache
 from typing import Any, Dict, List, Optional
-import hashlib
 import json as _json
-import os
 import re
 import unicodedata
 import uuid
@@ -23,14 +20,6 @@ from paperprocessor.models import ProcessedDocument
 
 
 ### HELPER FUNCTIONS ###
-
-def get_processed_result_path(paper_uuid: str) -> str:
-    """
-    Return absolute filesystem path for the stored processed result JSON for a paper.
-    Directory is controlled by env PAPER_JSON_DIR (default: data/paperjsons/).
-    """
-    base_dir = os.path.abspath(os.environ.get("PAPER_JSON_DIR", os.path.join(os.getcwd(), 'data', 'paperjsons')))
-    return os.path.join(base_dir, f"{paper_uuid}.json")
 
 
 def build_paper_slug(title: Optional[str], authors: Optional[str]) -> str:
@@ -198,72 +187,21 @@ def list_papers(db: Session, statuses: Optional[List[str]], limit: int) -> List[
     return [Paper.model_validate(record) for record in records]
 
 
-def _paperjsons_dir() -> str:
-    # Reuse processor's path helper to determine directory
-    sample_path = get_processed_result_path("sample")
-    return os.path.dirname(sample_path)
-
-
-def _build_dir_fingerprint(dir_path: str) -> str:
-    try:
-        entries = []
-        for name in os.listdir(dir_path):
-            if not name.lower().endswith(".json"):
-                continue
-            p = os.path.join(dir_path, name)
-            try:
-                st = os.stat(p)
-                entries.append((name, int(st.st_mtime_ns), int(st.st_size)))
-            except FileNotFoundError:
-                continue
-        entries.sort()
-        h = hashlib.sha256()
-        for name, mtime, size in entries:
-            h.update(name.encode("utf-8", errors="ignore"))
-            h.update(str(mtime).encode("ascii"))
-            h.update(str(size).encode("ascii"))
-        return h.hexdigest()
-    except Exception:
-        return ""
-
-
-def _scan_minimal_items(dir_path: str) -> List[Dict[str, Any]]:
-    items: List[Dict[str, Any]] = []
-    try:
-        files = [f for f in os.listdir(dir_path) if f.lower().endswith('.json')]
-        files.sort()
-    except FileNotFoundError:
-        return []
-    for name in files:
-        try:
-            paper_uuid = re.sub(r"\.json$", "", name, flags=re.IGNORECASE)
-            with open(os.path.join(dir_path, name), 'r', encoding='utf-8') as f:
-                data = _json.load(f)
-            title = data.get('title') if isinstance(data.get('title'), str) else None
-            authors = data.get('authors') if isinstance(data.get('authors'), str) else None
-            thumb = data.get('thumbnail_data_url') if isinstance(data.get('thumbnail_data_url'), str) else None
-            items.append({
-                "paper_uuid": paper_uuid,
-                "title": title,
-                "authors": authors,
-                "thumbnail_data_url": thumb,
-            })
-        except Exception:
-            continue
-    return items
-
-
-@lru_cache(maxsize=64)
-def _get_minimal_items_for_fingerprint(_fp: str, dir_path: str) -> List[Dict[str, Any]]:
-    return _scan_minimal_items(dir_path)
-
-
 def list_minimal_papers(db: Session) -> List[Dict[str, Any]]:
-    base_dir = _paperjsons_dir()
-    fp = _build_dir_fingerprint(base_dir)
-    items = _get_minimal_items_for_fingerprint(fp, base_dir) if fp else []
-
-    # Merge slug mapping (latest non-tombstone per paper_uuid)
+    """
+    List all completed papers with minimal fields for overview page.
+    Reads from database only.
+    
+    Args:
+        db: Active database session
+        
+    Returns:
+        List[Dict]: List of papers with paper_uuid, title, authors, thumbnail_data_url, slug
+    """
+    # Step 1: Query all completed papers from database
+    completed_papers = list_paper_records(db, statuses=["completed"], limit=1000)
+    
+    # Step 2: Build slug mapping (latest non-tombstone per paper_uuid)
     slug_records = get_all_paper_slugs(db, non_tombstone_only=True)
     slug_dtos = [PaperSlug.model_validate(record) for record in slug_records]
     latest_by_uuid: Dict[str, Dict[str, Any]] = {}
@@ -274,27 +212,41 @@ def list_minimal_papers(db: Session) -> List[Dict[str, Any]]:
         current = latest_by_uuid.get(puid)
         if current is None or (slug_dto.created_at and current.get("created_at") and slug_dto.created_at > current["created_at"]):
             latest_by_uuid[puid] = {"slug": slug_dto.slug, "created_at": slug_dto.created_at}
-
-    for it in items:
-        m = latest_by_uuid.get(it["paper_uuid"]) if isinstance(it, dict) else None
-        if m:
-            it["slug"] = m["slug"]
-
+    
+    # Step 3: Build minimal paper items with slug mapping
+    items: List[Dict[str, Any]] = []
+    for record in completed_papers:
+        item = {
+            "paper_uuid": record.paper_uuid,
+            "title": record.title,
+            "authors": record.authors,
+            "thumbnail_data_url": record.thumbnail_data_url,
+        }
+        
+        # Add slug if available
+        slug_mapping = latest_by_uuid.get(record.paper_uuid)
+        if slug_mapping:
+            item["slug"] = slug_mapping["slug"]
+        
+        items.append(item)
+    
     return items
 
 
 def delete_paper(db: Session, paper_uuid: str) -> bool:
+    """
+    Delete a paper from the database.
+    
+    Args:
+        db: Active database session
+        paper_uuid: UUID of paper to delete
+        
+    Returns:
+        bool: True if paper was deleted, False if not found
+    """
     row = get_paper_record(db, str(paper_uuid))
     if not row:
         return False
-
-    # Delete JSON file if exists
-    try:
-        json_path = get_processed_result_path(str(paper_uuid))
-        if os.path.exists(json_path):
-            os.remove(json_path)
-    except Exception:
-        pass
 
     # Remove DB row
     db.delete(row)

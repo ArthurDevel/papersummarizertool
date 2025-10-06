@@ -15,7 +15,7 @@ from paperprocessor.internals.header_formatter import format_headers, format_ima
 from paperprocessor.internals.section_rewriter import rewrite_sections
 from paperprocessor.internals.summary_generator import generate_five_minute_summary
 from shared.db import SessionLocal
-from papers.client import get_paper_metadata, get_processed_result_path
+from papers.client import get_paper_metadata
 
 logger = logging.getLogger(__name__)
 
@@ -82,15 +82,27 @@ def _calculate_usage_summary(step_costs: List[ApiCallCostForStep]) -> Dict[str, 
 
 
 def _load_usage_summary_from_json(paper_uuid: str) -> Optional[Dict[str, Any]]:
-    """Load usage summary data from processed result JSON file."""
+    """
+    Load usage summary data from database processed_content field.
+    
+    Args:
+        paper_uuid: UUID of paper to load usage summary for
+        
+    Returns:
+        Optional[Dict]: Usage summary dict or None if not found
+    """
     try:
-        path = get_processed_result_path(paper_uuid)
-        if not os.path.exists(path):
-            return None
-        with open(path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-        us = data.get('usage_summary')
-        return us if isinstance(us, dict) else None
+        from papers.db.client import get_paper_record
+        session = SessionLocal()
+        try:
+            record = get_paper_record(session, paper_uuid, load_content=True)
+            if not record or not record.processed_content:
+                return None
+            data = json.loads(record.processed_content)
+            us = data.get('usage_summary')
+            return us if isinstance(us, dict) else None
+        finally:
+            session.close()
     except Exception:
         return None
 

@@ -6,7 +6,6 @@ from sqlalchemy.orm import Session
 from api.types.paper_processing_api_models import Paper, JobStatusResponse, MinimalPaperItem
 from api.types.paper_processing_endpoints import JobDbStatus
 from paperprocessor.client import process_paper_pdf
-from papers.client import get_processed_result_path
 from papers.client import build_paper_slug
 from shared.db import get_session
 from papers.models import Paper, PaperSlug
@@ -247,22 +246,19 @@ async def check_arxiv(arxiv_id_or_url: str, db: Session = Depends(get_session)):
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid arXiv URL or identifier")
 
-    from sqlalchemy.orm import defer
-    job = db.query(PaperRecord).options(defer(PaperRecord.processed_content)).filter(PaperRecord.arxiv_id == arxiv_id).first()
-    if job and job.status == "completed":
-        # Check for JSON file existence as a proxy for being fully processed and available.
-        json_path = get_processed_result_path(job.paper_uuid)
-        if os.path.exists(json_path):
-            # Resolve the latest, non-tombstoned slug for this paper.
-            slug_row = (
-                db.query(PaperSlugRecord)
-                .filter(PaperSlugRecord.paper_uuid == job.paper_uuid)
-                .filter(PaperSlugRecord.tombstone == False)  # noqa: E712
-                .order_by(PaperSlugRecord.created_at.desc())
-                .first()
-            )
-            if slug_row:
-                return CheckArxivResponse(exists=True, viewer_url=f"/paper/{slug_row.slug}")
+    job = db.query(PaperRecord).filter(PaperRecord.arxiv_id == arxiv_id).first()
+    if job and job.status == "completed" and job.processed_content:
+        # Paper is completed and has processed content available
+        # Resolve the latest, non-tombstoned slug for this paper
+        slug_row = (
+            db.query(PaperSlugRecord)
+            .filter(PaperSlugRecord.paper_uuid == job.paper_uuid)
+            .filter(PaperSlugRecord.tombstone == False)  # noqa: E712
+            .order_by(PaperSlugRecord.created_at.desc())
+            .first()
+        )
+        if slug_row:
+            return CheckArxivResponse(exists=True, viewer_url=f"/paper/{slug_row.slug}")
 
     return CheckArxivResponse(exists=False, viewer_url=None)
 
