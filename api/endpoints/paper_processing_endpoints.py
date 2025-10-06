@@ -190,7 +190,8 @@ async def enqueue_arxiv(req: EnqueueArxivRequest, db: Session = Depends(get_sess
     paper_uuid = str(uuid.uuid4())
 
     # Duplicate check
-    existing = db.query(PaperRecord).filter(PaperRecord.arxiv_id == norm.arxiv_id).first()
+    from sqlalchemy.orm import defer
+    existing = db.query(PaperRecord).options(defer(PaperRecord.processed_content)).filter(PaperRecord.arxiv_id == norm.arxiv_id).first()
     if existing:
         raise HTTPException(status_code=409, detail="A paper with this arXiv ID already exists")
 
@@ -246,7 +247,8 @@ async def check_arxiv(arxiv_id_or_url: str, db: Session = Depends(get_session)):
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid arXiv URL or identifier")
 
-    job = db.query(PaperRecord).filter(PaperRecord.arxiv_id == arxiv_id).first()
+    from sqlalchemy.orm import defer
+    job = db.query(PaperRecord).options(defer(PaperRecord.processed_content)).filter(PaperRecord.arxiv_id == arxiv_id).first()
     if job and job.status == "completed":
         # Check for JSON file existence as a proxy for being fully processed and available.
         json_path = get_processed_result_path(job.paper_uuid)
@@ -317,7 +319,8 @@ class CreateSlugRequest(BaseModel):
 def create_slug(paper_uuid: UUID, db: Session = Depends(get_session)):
     # Load paper and validate required metadata
     logger.info("POST /papers/%s/slug (create)", paper_uuid)
-    job = db.query(PaperRecord).filter(PaperRecord.paper_uuid == str(paper_uuid)).first()
+    from sqlalchemy.orm import defer
+    job = db.query(PaperRecord).options(defer(PaperRecord.processed_content)).filter(PaperRecord.paper_uuid == str(paper_uuid)).first()
     if not job:
         logger.warning("Cannot create slug: paper not found paper_uuid=%s", paper_uuid)
         raise HTTPException(status_code=404, detail="Paper not found")
@@ -367,3 +370,43 @@ def get_slug_for_paper(paper_uuid: UUID, db: Session = Depends(get_session)):
         raise HTTPException(status_code=404, detail="Slug not found for paper")
     logger.info("Resolved latest slug for paper_uuid=%s -> slug=%s", paper_uuid, row.slug)
     return ResolveSlugResponse(paper_uuid=row.paper_uuid, slug=row.slug, tombstone=False)
+
+
+@router.get("/papers/{paper_uuid}")
+def get_paper_json(paper_uuid: UUID, db: Session = Depends(get_session)):
+    """
+    Get complete paper JSON including all processed content.
+    Returns the raw JSON format used by the frontend viewer.
+    
+    Args:
+        paper_uuid: UUID of the paper to retrieve
+        db: Database session
+        
+    Returns:
+        dict: Complete paper JSON with pages, sections, figures, etc.
+        
+    Raises:
+        404: If paper not found or no processed content available
+        500: If JSON parsing fails
+    """
+    try:
+        # Get the paper record from database with processed_content explicitly loaded
+        from sqlalchemy.orm import undefer
+        record = db.query(PaperRecord).options(undefer(PaperRecord.processed_content)).filter(PaperRecord.paper_uuid == str(paper_uuid)).first()
+        
+        if not record:
+            raise HTTPException(status_code=404, detail="Paper not found")
+        
+        if not record.processed_content:
+            raise HTTPException(status_code=404, detail="No processed content available for this paper")
+        
+        # Parse and return the JSON directly
+        import json
+        paper_json = json.loads(record.processed_content)
+        return paper_json
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to retrieve paper {paper_uuid}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve paper: {str(e)}")

@@ -24,6 +24,17 @@ echo "Running backend migrations..."
 alembic -c alembic.ini upgrade head
 echo "Backend migrations complete."
 
+# Run all data migration scripts
+echo "Running data migration scripts..."
+export PYTHONPATH=/app:$PYTHONPATH
+for script in migrations/scripts/*.py; do
+  if [ -f "$script" ] && [ "$(basename "$script")" != "__init__.py" ]; then
+    echo "Executing: $script"
+    python "$script" || echo "Warning: $script failed but continuing..."
+  fi
+done
+echo "Data migration scripts complete."
+
 # Run BetterAuth migrations (Node/Next.js) if available
 if [ -d "/app/frontend" ]; then
   echo "Running BetterAuth migrations..."

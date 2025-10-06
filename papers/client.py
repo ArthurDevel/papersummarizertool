@@ -313,7 +313,7 @@ def delete_paper(db: Session, paper_uuid: str) -> bool:
 
 def save_paper(db: Session, processed_content: ProcessedDocument) -> Paper:
     """
-    Save processed document to database and JSON file.
+    Save processed document to database.
     
     Args:
         db: Database session
@@ -421,13 +421,8 @@ def save_paper(db: Session, processed_content: ProcessedDocument) -> Paper:
     if result_dict["total_cost"] and result_dict["num_pages"] > 0:
         result_dict["avg_cost_per_page"] = result_dict["total_cost"] / result_dict["num_pages"]
     
-    # Step 3: Save JSON file
-    json_path = get_processed_result_path(paper_uuid)
-    os.makedirs(os.path.dirname(json_path), exist_ok=True)
-    tmp_path = f"{json_path}.tmp"
-    with open(tmp_path, 'w', encoding='utf-8') as f:
-        _json.dump(result_dict, f, ensure_ascii=False)
-    os.replace(tmp_path, json_path)
+    # Step 3: Convert JSON to string for database storage
+    json_string = _json.dumps(result_dict, ensure_ascii=False)
     
     # Step 4: Create or update paper record in database
     paper_data = {
@@ -440,6 +435,7 @@ def save_paper(db: Session, processed_content: ProcessedDocument) -> Paper:
         'total_cost': result_dict["total_cost"],
         'avg_cost_per_page': result_dict["avg_cost_per_page"],
         'thumbnail_data_url': result_dict["thumbnail_data_url"],
+        'processed_content': json_string,
         'finished_at': datetime.utcnow(),
     }
     
@@ -468,29 +464,31 @@ def get_paper_metadata(db: Session, paper_uuid: str) -> Paper:
 def get_paper(db: Session, paper_uuid: str) -> Paper:
     """
     Get complete paper by UUID.
-    Loads both database metadata and full processing results from JSON file.
+    Loads both database metadata and full processing results from database.
     
     Returns:
         Paper: Complete paper with metadata and content (pages, sections)
         
     Raises:
-        FileNotFoundError: If paper with UUID not found or JSON file missing
+        FileNotFoundError: If paper with UUID not found or no processed content
     """
-    # Step 1: Get database metadata
-    paper = get_paper_metadata(db, paper_uuid)
+    # Step 1: Get database record with processed_content loaded
+    record = get_paper_record(db, paper_uuid, load_content=True)
     
-    # Step 2: Load JSON file with full processing results
-    json_path = get_processed_result_path(paper_uuid)
-    if not os.path.exists(json_path):
-        raise FileNotFoundError(f"Processed result JSON not found for paper {paper_uuid}")
+    # Step 2: Check for processed content in database
+    if not record.processed_content:
+        raise FileNotFoundError(f"No processed content found for paper {paper_uuid}")
     
+    # Step 3: Parse JSON from database
     try:
-        with open(json_path, 'r', encoding='utf-8') as f:
-            result_dict = _json.load(f)
+        result_dict = _json.loads(record.processed_content)
     except Exception as e:
-        raise RuntimeError(f"Failed to load processed result JSON for paper {paper_uuid}: {e}")
+        raise RuntimeError(f"Failed to parse processed content for paper {paper_uuid}: {e}")
     
-    # Step 3: Convert legacy JSON format to our DTOs
+    # Step 4: Convert database record to Paper DTO with basic metadata
+    paper = Paper.model_validate(record)
+    
+    # Step 5: Convert legacy JSON format to our DTOs
     
     # Convert pages from legacy format
     pages = []
@@ -523,7 +521,7 @@ def get_paper(db: Session, paper_uuid: str) -> Paper:
         )
         sections.append(section)
     
-    # Step 4: Add content to paper DTO
+    # Step 6: Add content to paper DTO
     paper.pages = pages
     paper.sections = sections
     

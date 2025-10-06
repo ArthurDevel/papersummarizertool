@@ -53,7 +53,8 @@ async def search_query(req: SearchQueryRequest, db: Session = Depends(get_sessio
     # Step 2: Query the DB to find which of these papers we have processed.
     db_papers_by_arxiv_id = {}
     if result_arxiv_ids:
-        paper_rows = db.query(PaperRecord).filter(PaperRecord.arxiv_id.in_(result_arxiv_ids)).all()
+        from sqlalchemy.orm import defer
+        paper_rows = db.query(PaperRecord).options(defer(PaperRecord.processed_content)).filter(PaperRecord.arxiv_id.in_(result_arxiv_ids)).all()
         db_papers_by_arxiv_id = {p.arxiv_id: p for p in paper_rows}
         logger.info(f"Found {len(paper_rows)} matching papers in the database.")
 

@@ -92,7 +92,8 @@ def admin_list_papers(status: Optional[str] = None, limit: int = 500, db: Sessio
 
 @router.post("/admin/papers/{paper_uuid}/restart", status_code=200)
 def admin_restart_paper(paper_uuid: uuid.UUID, _body: RestartPaperRequest | None = None, db: Session = Depends(get_session), _admin: bool = Depends(require_admin)):
-    row = db.query(PaperRecord).filter(PaperRecord.paper_uuid == str(paper_uuid)).first()
+    from sqlalchemy.orm import defer
+    row = db.query(PaperRecord).options(defer(PaperRecord.processed_content)).filter(PaperRecord.paper_uuid == str(paper_uuid)).first()
     if not row:
         raise HTTPException(status_code=404, detail="Paper not found")
     if row.status == "processing":
@@ -136,7 +137,8 @@ async def admin_start_processing_requested(arxiv_id_or_url: str, db: Session = D
     now = datetime.utcnow()
 
     # Check if paper already exists in DB
-    job = db.query(PaperRecord).filter(PaperRecord.arxiv_id == base_id).first()
+    from sqlalchemy.orm import defer
+    job = db.query(PaperRecord).options(defer(PaperRecord.processed_content)).filter(PaperRecord.arxiv_id == base_id).first()
     if job:
         # Do not modify existing job; return its identity
         return StartProcessingResponse(paper_uuid=job.paper_uuid, status=job.status)
@@ -220,7 +222,8 @@ def admin_import_paper_json(paper: Dict[str, Any], db: Session = Depends(get_ses
     now = datetime.utcnow()
 
     # Upsert by arxiv_id
-    existing = db.query(PaperRecord).filter(PaperRecord.arxiv_id == arxiv_id).first()
+    from sqlalchemy.orm import defer
+    existing = db.query(PaperRecord).options(defer(PaperRecord.processed_content)).filter(PaperRecord.arxiv_id == arxiv_id).first()
     if existing:
         target_uuid = existing.paper_uuid
         # Update existing row to completed
@@ -243,7 +246,8 @@ def admin_import_paper_json(paper: Dict[str, Any], db: Session = Depends(get_ses
     else:
         # Ensure paper_uuid uniqueness; if collides with another arxiv_id, generate a new one
         target_uuid = paper_id
-        by_uuid = db.query(PaperRecord).filter(PaperRecord.paper_uuid == target_uuid).first()
+        from sqlalchemy.orm import defer
+        by_uuid = db.query(PaperRecord).options(defer(PaperRecord.processed_content)).filter(PaperRecord.paper_uuid == target_uuid).first()
         if by_uuid and by_uuid.arxiv_id != arxiv_id:
             target_uuid = str(uuid.uuid4())
         new_row = PaperRecord(
@@ -310,7 +314,8 @@ def admin_import_paper_json(paper: Dict[str, Any], db: Session = Depends(get_ses
         logger.exception("Failed to write imported JSON for paper_uuid=%s", target_uuid)
 
     # Return the DB row
-    job = db.query(PaperRecord).filter(PaperRecord.paper_uuid == target_uuid).first()
+    from sqlalchemy.orm import defer
+    job = db.query(PaperRecord).options(defer(PaperRecord.processed_content)).filter(PaperRecord.paper_uuid == target_uuid).first()
     if not job:
         raise HTTPException(status_code=500, detail="Import completed but record not found")
     return JobDbStatus(

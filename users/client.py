@@ -39,10 +39,11 @@ async def add_list_entry(db: Session, auth_provider_id: str, paper_uuid: str) ->
     """
     Add a paper to the user's list. Idempotent: returns created=False if already present.
     """
+    from sqlalchemy.orm import defer
     user = db.query(UserRow).filter(UserRow.id == auth_provider_id).first()
     if not user:
         raise ValueError("User not found")
-    paper = db.query(PaperRecord).filter(PaperRecord.paper_uuid == paper_uuid).first()
+    paper = db.query(PaperRecord).options(defer(PaperRecord.processed_content)).filter(PaperRecord.paper_uuid == paper_uuid).first()
     if not paper:
         raise ValueError("Paper not found")
     existing = (
@@ -59,10 +60,11 @@ async def add_list_entry(db: Session, auth_provider_id: str, paper_uuid: str) ->
 
 
 async def remove_list_entry(db: Session, auth_provider_id: str, paper_uuid: str) -> Dict[str, bool]:
+    from sqlalchemy.orm import defer
     user = db.query(UserRow).filter(UserRow.id == auth_provider_id).first()
     if not user:
         raise ValueError("User not found")
-    paper = db.query(PaperRecord).filter(PaperRecord.paper_uuid == paper_uuid).first()
+    paper = db.query(PaperRecord).options(defer(PaperRecord.processed_content)).filter(PaperRecord.paper_uuid == paper_uuid).first()
     if not paper:
         raise ValueError("Paper not found")
     q = (
@@ -75,10 +77,11 @@ async def remove_list_entry(db: Session, auth_provider_id: str, paper_uuid: str)
 
 
 async def is_entry_present(db: Session, auth_provider_id: str, paper_uuid: str) -> Dict[str, bool]:
+    from sqlalchemy.orm import defer
     user = db.query(UserRow).filter(UserRow.id == auth_provider_id).first()
     if not user:
         raise ValueError("User not found")
-    paper = db.query(PaperRecord).filter(PaperRecord.paper_uuid == paper_uuid).first()
+    paper = db.query(PaperRecord).options(defer(PaperRecord.processed_content)).filter(PaperRecord.paper_uuid == paper_uuid).first()
     if not paper:
         return {"exists": False}
     exists = (
