@@ -51,4 +51,10 @@ pip install layoutparser opencv-python PyMuPDF numpy requests
 
 4.  **Check the output**: The script will create a `debug_output` directory containing:
     *   `page_{page_num}_all_detections.png`: A visualization of all detected layout elements on the page.
-    *   `page_{page_num}_{asset_type}_{i}.png`: Cropped images of the detected figures and tables. 
+    *   `page_{page_num}_{asset_type}_{i}.png`: Cropped images of the detected figures and tables.
+
+## Hume AI TTS Test
+
+This directory also contains a test for the Hume AI Text-to-Speech API.
+
+See `2025.10.07-test-hume-tts/README.md` for setup instructions and usage. 
