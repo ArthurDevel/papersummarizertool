@@ -21,6 +21,8 @@ from papers.client import create_paper
 ### CONSTANTS ###
 ALPHAXIV_API_URL = "https://api.alphaxiv.org/papers/v2/feed"
 ALPHAXIV_BASE_URL = "https://www.alphaxiv.org"
+PAGE_SIZE = 20  # Number of papers to fetch per page from API
+TIME_INTERVAL = "3 Days"  # Time window for hot papers
 
 
 ### HELPER FUNCTIONS ###
@@ -117,20 +119,6 @@ def database_session():
     catchup=False,
     tags=["alphaxiv", "papers"],
     params={
-        "page_size": Param(
-            type="integer",
-            default=20,
-            title="Page Size",
-            description="Number of papers to fetch from AlphaXiv API.",
-            minimum=1,
-            maximum=100
-        ),
-        "interval": Param(
-            type="string",
-            default="3 Days",
-            title="Time Interval",
-            description="Time interval for hot papers (e.g., '3 Days', '7 Days').",
-        ),
         "papers_to_add": Param(
             type="integer",
             default=10,
@@ -153,13 +141,11 @@ def database_session():
 def daily_alphaxiv_papers_dag():
 
     @task
-    def fetch_hot_papers(page_size: int, interval: str) -> List[Dict[str, Any]]:
+    def fetch_hot_papers() -> List[Dict[str, Any]]:
         """
         Fetch hot papers from AlphaXiv API across all available pages.
 
-        Args:
-            page_size: Number of papers to fetch per page from the API.
-            interval: Time interval for hot papers (e.g., "3 Days").
+        Uses PAGE_SIZE and TIME_INTERVAL constants defined at module level.
 
         Returns:
             List[Dict[str, Any]]: List of paper data from all pages
@@ -167,7 +153,7 @@ def daily_alphaxiv_papers_dag():
         Raises:
             Exception: If API call fails or returns invalid data
         """
-        print(f"Fetching hot papers from AlphaXiv (pageSize={page_size}, interval={interval})")
+        print(f"Fetching hot papers from AlphaXiv (pageSize={PAGE_SIZE}, interval={TIME_INTERVAL})")
         print(f"API URL: {ALPHAXIV_API_URL}")
 
         all_papers = []
@@ -178,8 +164,8 @@ def daily_alphaxiv_papers_dag():
             params = {
                 "pageNum": page_num,
                 "sortBy": "Hot",
-                "pageSize": page_size,
-                "interval": interval
+                "pageSize": PAGE_SIZE,
+                "interval": TIME_INTERVAL
             }
 
             print(f"Fetching page {page_num}...")
@@ -358,11 +344,9 @@ def daily_alphaxiv_papers_dag():
             print(f"===========================\n")
 
     # Define task dependencies
-    page_size_param = "{{ params.page_size }}"
-    interval_param = "{{ params.interval }}"
     num_papers = "{{ params.papers_to_add }}"
 
-    papers = fetch_hot_papers(page_size=page_size_param, interval=interval_param)
+    papers = fetch_hot_papers()
     print_papers_info(papers)
     add_top_papers_to_queue(papers, papers_to_add=num_papers)
 
