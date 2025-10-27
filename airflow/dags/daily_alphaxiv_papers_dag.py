@@ -4,6 +4,7 @@ import pendulum
 import requests
 import re
 import json
+import time
 from airflow.decorators import dag, task
 from typing import List, Dict, Any, Optional
 from contextlib import contextmanager
@@ -119,11 +120,20 @@ def database_session():
     catchup=False,
     tags=["alphaxiv", "papers"],
     params={
-        "date_to_fetch": Param(
+        "time_interval": Param(
             type="string",
-            default=pendulum.yesterday().to_date_string(),
-            title="Date to Fetch",
-            description="The date for which to fetch papers, in YYYY-MM-DD format. Papers from the 3 days before this date will be fetched."
+            default="3 Days",
+            enum=["3 Days", "7 Days", "30 Days", "90 Days"],
+            title="Time Interval",
+            description="How far back in time to fetch hot papers from AlphaXiv."
+        ),
+        "max_pages_to_check": Param(
+            type="integer",
+            default=10,
+            title="Max Pages to Check",
+            description="Maximum number of pages to fetch from AlphaXiv API before sorting and selecting top papers.",
+            minimum=1,
+            maximum=50
         ),
         "papers_to_add": Param(
             type="integer",
@@ -139,48 +149,52 @@ def database_session():
 
     This DAG fetches hot papers from AlphaXiv and adds the top N papers to the processing queue.
     - Fetches papers sorted by "Hot" ranking from AlphaXiv API
-    - Extracts popularity signals (total votes, visits, GitHub stars)
+    - Extracts popularity signals (views, likes, comments)
     - Adds top papers to the processing queue for summarization
-    - When run on its daily schedule, it fetches papers for the previous day.
-    - When run manually, you can specify a date and the number of papers to add.
+    - When run on its daily schedule, it fetches papers from the last 3 days.
+    - When run manually, you can customize the time interval (3, 7, 30, or 90 days) and number of papers to add.
     """,
 )
 def daily_alphaxiv_papers_dag():
 
     @task
-    def fetch_hot_papers(date_to_fetch: str) -> List[Dict[str, Any]]:
+    def fetch_hot_papers(time_interval: str, max_pages_to_check: int) -> List[Dict[str, Any]]:
         """
-        Fetch hot papers from AlphaXiv API across all available pages.
+        Fetch hot papers from AlphaXiv API across multiple pages.
 
-        Uses PAGE_SIZE and TIME_INTERVAL constants defined at module level.
+        Since the API doesn't return papers in a guaranteed order, we fetch multiple
+        pages and will sort them later by popularity metrics.
+
+        Uses PAGE_SIZE constant defined at module level.
 
         Args:
-            date_to_fetch: The date to fetch papers for, in YYYY-MM-DD format.
-                          Papers from the 3 days before this date will be fetched.
+            time_interval: Time window for fetching hot papers (e.g., "3 Days", "7 Days")
+            max_pages_to_check: Maximum number of pages to fetch from the API
 
         Returns:
-            List[Dict[str, Any]]: List of paper data from all pages
+            List[Dict[str, Any]]: List of paper data from all fetched pages
 
         Raises:
             Exception: If API call fails or returns invalid data
         """
-        print(f"Fetching hot papers from AlphaXiv for {date_to_fetch}")
-        print(f"  (pageSize={PAGE_SIZE}, interval={TIME_INTERVAL})")
-        print(f"API URL: {ALPHAXIV_API_URL}")
+        max_pages_to_check = int(max_pages_to_check)
+        print(f"Fetching hot papers from AlphaXiv")
+        print(f"  Time interval: {time_interval}, Page size: {PAGE_SIZE}")
+        print(f"  Max pages to check: {max_pages_to_check}")
+        print(f"  API URL: {ALPHAXIV_API_URL}")
 
         all_papers = []
         page_num = 1
-        max_pages = 100  # Safety limit to prevent infinite loops
 
-        while page_num <= max_pages:
+        while page_num <= max_pages_to_check:
             params = {
                 "pageNum": page_num,
                 "sortBy": "Hot",
                 "pageSize": PAGE_SIZE,
-                "interval": TIME_INTERVAL
+                "interval": time_interval
             }
 
-            print(f"Fetching page {page_num}...")
+            print(f"Fetching page {page_num}/{max_pages_to_check}...")
 
             try:
                 response = requests.get(ALPHAXIV_API_URL, params=params, timeout=30)
@@ -206,22 +220,43 @@ def daily_alphaxiv_papers_dag():
 
             page_num += 1
 
+            # Rate limit: wait 1 second before next API call (unless we're done)
+            if page_num <= max_pages_to_check and papers_on_page:
+                time.sleep(1)
+
         if not all_papers:
             print(f"No papers found in AlphaXiv response")
             return []  # Return empty list to allow DAG to complete gracefully
 
         print(f"\nSuccessfully fetched {len(all_papers)} total papers from {page_num - 1} page(s)")
-        return all_papers
+
+        # Sort papers by popularity metrics (views, likes, public votes)
+        # Prioritize: public_total_votes > likes > views
+        def get_popularity_score(paper: Dict[str, Any]) -> tuple:
+            metrics = paper.get('metrics', {})
+            public_votes = metrics.get('public_total_votes', 0)
+            visits = metrics.get('visits_count', {})
+            views = visits.get('all', 0) if isinstance(visits, dict) else 0
+
+            # Get likes from the paper page (we'll fetch these later, for now use 0)
+            # For sorting purposes, we'll use public_votes as primary metric
+            return (public_votes, views)
+
+        sorted_papers = sorted(all_papers, key=get_popularity_score, reverse=True)
+        print(f"Sorted {len(sorted_papers)} papers by popularity (public_votes, views)")
+
+        return sorted_papers
 
     @task
-    def print_papers_info(papers_data: List[Dict[str, Any]]) -> None:
+    def print_papers_info(papers_data: List[Dict[str, Any]], papers_to_add: int) -> None:
         """
         Print paper titles and rankings to console.
         Note: Detailed signals (views, likes, comments) are fetched later
         when adding papers to the queue.
 
         Args:
-            papers_data: List of paper data from the API
+            papers_data: List of paper data from the API (already sorted by popularity)
+            papers_to_add: Number of top papers to display and add
 
         Raises:
             Exception: If papers_data is empty or malformed
@@ -229,14 +264,22 @@ def daily_alphaxiv_papers_dag():
         if not papers_data:
             raise Exception("No papers to display - papers_data is empty")
 
-        # Papers are already sorted by "Hot" ranking from the API
-        print(f"\n=== AlphaXiv Hot Papers ({len(papers_data)} papers) ===\n")
+        papers_to_add = int(papers_to_add)
+
+        # Only display the top N papers that will be added
+        papers_to_display = papers_data[:papers_to_add]
+
+        print(f"\n=== AlphaXiv Hot Papers - Top {len(papers_to_display)} (from {len(papers_data)} fetched) ===\n")
 
         # Print each paper with ranking
-        for rank, paper in enumerate(papers_data, 1):
+        for rank, paper in enumerate(papers_to_display, 1):
             try:
                 title = paper.get('title', 'Unknown Title')
                 arxiv_id = paper.get('universal_paper_id', 'Unknown')
+                metrics = paper.get('metrics', {})
+                public_votes = metrics.get('public_total_votes', 0)
+                visits = metrics.get('visits_count', {})
+                views = visits.get('all', 0) if isinstance(visits, dict) else 0
 
                 # Construct URLs
                 arxiv_url = f"https://arxiv.org/abs/{arxiv_id}" if arxiv_id != 'Unknown' else 'N/A'
@@ -244,6 +287,7 @@ def daily_alphaxiv_papers_dag():
 
                 print(f"#{rank} - {title}")
                 print(f"     ArXiv ID: {arxiv_id}")
+                print(f"     Public Votes: {public_votes} | Views: {views}")
                 print(f"     ArXiv URL: {arxiv_url}")
                 print(f"     AlphaXiv URL: {alphaxiv_url}")
                 print("")  # Empty line for readability
@@ -356,11 +400,12 @@ def daily_alphaxiv_papers_dag():
             print(f"===========================\n")
 
     # Define task dependencies
-    date_str = "{{ params.date_to_fetch }}"
+    interval = "{{ params.time_interval }}"
+    max_pages = "{{ params.max_pages_to_check }}"
     num_papers = "{{ params.papers_to_add }}"
 
-    papers = fetch_hot_papers(date_to_fetch=date_str)
-    print_papers_info(papers)
+    papers = fetch_hot_papers(time_interval=interval, max_pages_to_check=max_pages)
+    print_papers_info(papers, papers_to_add=num_papers)
     add_top_papers_to_queue(papers, papers_to_add=num_papers)
 
 
