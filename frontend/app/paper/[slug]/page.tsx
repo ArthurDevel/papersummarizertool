@@ -35,9 +35,6 @@ export default function LayoutTestsPage() {
   const abortRef = useRef<AbortController | null>(null);
   const mainRef = useRef<HTMLDivElement | null>(null);
   const summaryRef = useRef<HTMLDivElement | null>(null);
-  const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
-  const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
-  const [footerOverlap, setFooterOverlap] = useState<number>(0);
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [modalData, setModalData] = useState<
     | { kind: 'figure'; data: Figure }
@@ -47,7 +44,6 @@ export default function LayoutTestsPage() {
   const pageImageContainerRef = useRef<HTMLDivElement | null>(null);
   const pageImageRef = useRef<HTMLImageElement | null>(null);
   const [modalZoom, setModalZoom] = useState<number>(1);
-  const [readingMinutes, setReadingMinutes] = useState<number | null>(null);
 
   const fetchIndexAndMaybeData = async (explicitFile?: string | null) => {
     try {
@@ -116,23 +112,6 @@ export default function LayoutTestsPage() {
     };
   }, [params]);
 
-  // Compute estimated reading time (~200 words/min) based on rewritten section content
-  useEffect(() => {
-    if (!paperData) {
-      setReadingMinutes(null);
-      return;
-    }
-    try {
-      const texts = (paperData.sections || []).map((s: any) => (s?.rewritten_content || ''));
-      const combined = texts.filter(Boolean).join(' ');
-      const words = (combined.match(/[^\s]+/g) || []).length;
-      const minutes = Math.max(1, Math.round(words / 200));
-      setReadingMinutes(minutes);
-    } catch {
-      setReadingMinutes(null);
-    }
-  }, [paperData]);
-
   // Log paper id instead of displaying it
   useEffect(() => {
     if (paperData?.paper_id) {
@@ -180,148 +159,11 @@ export default function LayoutTestsPage() {
     })();
   }, [availableFiles, selectedFile]);
 
-  useEffect(() => {
-    if (!paperData) return;
-    const container = mainRef.current;
-    if (!container) return;
 
-    const computeActive = () => {
-      const anchorY = 72; // approx navbar + padding
-      let bestId: string | null = null;
-      let bestDelta = Number.POSITIVE_INFINITY;
-
-      const allCheckableSections = [
-        { id: 'sec-summary', element: summaryRef.current },
-        ...paperData.sections.map((_, idx) => ({ id: `sec-${idx}`, element: sectionRefs.current[`sec-${idx}`] })),
-      ];
-
-      allCheckableSections.forEach(({ id, element }) => {
-        if (!element) return;
-        const delta = Math.abs(element.getBoundingClientRect().top - anchorY);
-        if (delta < bestDelta) {
-          bestDelta = delta;
-          bestId = id;
-        }
-      });
-
-      if (bestId && bestId !== activeSectionId) setActiveSectionId(bestId);
-    };
-
-    const computeFooter = () => {
-      const footerEl = document.getElementById('site-footer');
-      if (!footerEl) {
-        if (footerOverlap !== 0) setFooterOverlap(0);
-        return;
-      }
-      const rect = footerEl.getBoundingClientRect();
-      const vh = window.innerHeight || 0;
-      const overlap = Math.max(0, vh - Math.max(rect.top, 0));
-      const clamped = Math.min(overlap, vh);
-      if (clamped !== footerOverlap) setFooterOverlap(clamped);
-    };
-
-    computeActive();
-    computeFooter();
-    let raf = 0 as number | 0;
-    const onScroll = () => {
-      if (raf) return;
-      raf = requestAnimationFrame(() => {
-        raf = 0 as number | 0;
-        computeActive();
-        computeFooter();
-      }) as unknown as number;
-    };
-    window.addEventListener('scroll', onScroll, { passive: true } as any);
-    window.addEventListener('resize', onScroll, { passive: true } as any);
-    return () => {
-      window.removeEventListener('scroll', onScroll as any);
-      window.removeEventListener('resize', onScroll as any);
-      if (raf) cancelAnimationFrame(raf as unknown as number);
-    };
-  }, [paperData, activeSectionId]);
-
-  
 
   // Note: processInlineImages function removed - backend now generates proper markdown images
   // Images now come as: ![Figure shortid](shortid:weu33j4l)
   // Future: Backend can add descriptions like: ![Figure shortid](shortid:weu33j4l "Custom description")
-
-  const renderRewrittenSectionContent = (section: Section) => {
-    const figures = paperData?.figures || [];
-    
-    return (
-      <>
-        {!section.rewritten_content && section.level === 1 && (
-          <h4 className="font-semibold">{section.section_title} (p. {section.start_page}-{section.end_page})</h4>
-        )}
-        {section.rewritten_content && (
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm, remarkMath]}
-              rehypePlugins={[[rehypeKatex, { strict: false, throwOnError: false }]]}
-              urlTransform={(url) => {
-                // Allow our custom shortid: scheme to pass through
-                if (url.startsWith('shortid:')) {
-                  return url;
-                }
-                // Use default transformation for other URLs
-                return url;
-              }}
-              components={{
-                img: ({ src, alt, title, ...props }) => {
-                  // Handle shortid: URLs from backend
-                  if (src?.startsWith('shortid:')) {
-                    const shortId = src.replace('shortid:', '');
-                    const figure = figures.find(f => f.short_id === shortId);
-                    
-                    if (!figure) {
-                      return <span className="text-red-500">[Image {shortId} not found]</span>;
-                    }
-                    
-                    // Use title as description, alt as fallback
-                    const description = title || alt || figure.explanation || `Figure ${shortId}`;
-                    
-                    return (
-                      <img
-                        src={figure.image_data_url}
-                        alt={description}
-                        title={description}
-                        className="inline-block max-w-full h-auto my-2 mx-auto border border-gray-300 rounded shadow-sm cursor-pointer"
-                        onClick={() => {
-                          setModalData({ kind: 'figure', data: figure });
-                          setIsModalOpen(true);
-                        }}
-                      />
-                    );
-                  }
-                  
-                  // Handle regular images - filter out React node props
-                  const { node, children, ...safeProps } = props;
-                  return (
-                    <img
-                      src={src}
-                      alt={alt}
-                      title={title}
-                      {...safeProps}
-                      className="inline-block max-w-full h-auto my-2 mx-auto border border-gray-300 rounded shadow-sm cursor-pointer"
-                      onClick={() => {
-                        // Find figure by src to open modal
-                        const figure = figures.find(f => f.image_data_url === src);
-                        if (figure) {
-                          setModalData({ kind: 'figure', data: figure });
-                          setIsModalOpen(true);
-                        }
-                      }}
-                    />
-                  );
-                },
-              }}
-            >
-              {preprocessBacktickedMath(section.rewritten_content || '')}
-            </ReactMarkdown>
-        )}
-      </>
-    );
-  };
 
 
   useEffect(() => {
@@ -414,76 +256,8 @@ export default function LayoutTestsPage() {
 
   return (
     <div className="flex items-start gap-4 p-2 sm:p-4 min-h-0 text-gray-900 dark:text-gray-100">
-      {/* Left Sidebar: Sections - Hidden on mobile */}
-      <div className="hidden lg:block w-64 flex-shrink-0 sticky top-0 self-start pt-4 pb-4">
-        <div
-          className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-md overflow-hidden"
-          style={{ height: `calc(100vh - ${footerOverlap}px - 2rem)` }}
-        >
-          <div className="h-full overflow-y-auto p-4">
-              {paperData ? (
-                <>
-                  {paperData.five_minute_summary && (
-                    <div className="mb-6">
-                      <h2 className="text-lg font-semibold mb-2 text-gray-800 dark:text-gray-200">5-Minute Summary</h2>
-                      <div className="border-b border-gray-200 dark:border-gray-700 mb-2"></div>
-                      <ul className="space-y-1">
-                        <li>
-                          <button
-                            className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
-                              activeSectionId === 'sec-summary' ? 'bg-blue-600 text-white' : 'bg-white dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200'
-                            }`}
-                            onClick={() => {
-                              summaryRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                              setActiveSectionId('sec-summary');
-                            }}
-                            title="Go to 5-Minute Summary"
-                          >
-                            Summary
-                          </button>
-                        </li>
-                      </ul>
-                    </div>
-                  )}
-
-                  <div>
-                    <h2 className="text-lg font-semibold mb-2 text-gray-800 dark:text-gray-200">Simplified Version</h2>
-                    <div className="border-b border-gray-200 dark:border-gray-700 mb-2"></div>
-                    <ul className="space-y-1">
-                      {paperData.sections.map((section: Section, idx: number) => {
-                        const id = `sec-${idx}`;
-                        const isActive = activeSectionId === id;
-                        return (
-                          <li key={id}>
-                            <button
-                              className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
-                                isActive ? 'bg-blue-600 text-white' : 'bg-white dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200'
-                              }`}
-                              onClick={() => {
-                                const el = sectionRefs.current[id];
-                                el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                                setActiveSectionId(id);
-                              }}
-                              title={`Go to ${section.section_title}`}
-                            >
-                              <span className="mr-2 font-semibold">{idx + 1}.</span>
-                              <span>{section.section_title || `Section ${idx + 1}`}</span>
-                            </button>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </div>
-                </>
-              ) : (
-                <div className="text-sm text-gray-500 dark:text-gray-400">Loading sections…</div>
-              )}
-          </div>
-        </div>
-      </div>
-
-      {/* Content */}
-      <main ref={mainRef} className="flex-1 min-w-0 p-2 sm:p-4 flex flex-col">
+      {/* Content - Now full width without sidebars */}
+      <main ref={mainRef} className="flex-1 max-w-4xl mx-auto w-full p-2 sm:p-4 flex flex-col">
         {paperData ? (
           <>
             <div className="mb-4 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-md overflow-hidden p-3 sm:p-4">
@@ -500,10 +274,7 @@ export default function LayoutTestsPage() {
                   {paperData.authors && (
                     <p className="text-sm text-gray-700 dark:text-gray-300 mb-1 break-words whitespace-normal">{paperData.authors}</p>
                   )}
-                  {typeof readingMinutes === 'number' && (
-                    <p className="text-xs text-gray-500 dark:text-gray-400">📖 {readingMinutes} min read</p>
-                  )}
-                  
+
                   {paperData.arxiv_url && (
                     <a
                       href={paperData.arxiv_url}
@@ -549,42 +320,42 @@ export default function LayoutTestsPage() {
               </div>
             )}
 
-            {/* Simplified Version */}
-            <div className="mb-4 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-md overflow-hidden">
-              <div className="p-3 sm:p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <div className="w-2 h-2 bg-gray-500 rounded-full"></div>
-                  <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                    Simplified Version
-                  </h2>
-                  {typeof readingMinutes === 'number' && (
-                    <span className="text-xs text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded-full">
-                      📖 {readingMinutes} min read
-                    </span>
-                  )}
-                </div>
-                <div>
-                  {paperData.sections.map((section: Section, idx: number) => {
-                    const sectionId = `sec-${idx}`;
-                    const isLastSection = idx === paperData.sections.length - 1;
-
-                    return (
-                      <React.Fragment key={section.section_title + '-' + idx}>
-                        <div
-                          ref={(el) => {
-                            sectionRefs.current[sectionId] = el;
-                          }}
-                          className="prose dark:prose-invert max-w-none"
+            {/* Similar Papers - Moved below summary */}
+            {similarItems.length > 0 && (
+              <div className="mb-6 sm:mb-8 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-md overflow-hidden">
+                <div className="p-3 sm:p-4">
+                  <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-gray-100">Similar papers</h2>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {similarItems.map(({ key, title, authors, thumbnail_data_url, slug }) => {
+                      const target = slug || key;
+                      return (
+                        <a
+                          key={key}
+                          href={`/paper/${encodeURIComponent(target)}`}
+                          className="block w-full text-left p-3 rounded-md transition-colors bg-white dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 border border-gray-200 dark:border-gray-600"
+                          title={`Open ${title || key}`}
+                          aria-label={`Open ${title || key}`}
                         >
-                          {renderRewrittenSectionContent(section)}
-                        </div>
-                        {!isLastSection && <hr className="my-6" />}
-                      </React.Fragment>
-                    );
-                  })}
+                          <div className="flex items-start gap-3">
+                            <div className="w-16 h-16 bg-gray-200 dark:bg-gray-600 rounded-md flex-shrink-0 overflow-hidden">
+                              {thumbnail_data_url && (
+                                <img src={thumbnail_data_url} alt="" className="w-16 h-16 object-cover" />
+                              )}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 line-clamp-2">{title || key + '.json'}</div>
+                              {authors && (
+                                <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 line-clamp-1">{authors}</div>
+                              )}
+                            </div>
+                          </div>
+                        </a>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
           </>
         ) : (
           isLoading ? (
@@ -597,62 +368,6 @@ export default function LayoutTestsPage() {
           ) : null
         )}
     </main>
-
-      {/* Right Sidebar: Similar Papers - Hidden on mobile */}
-      <div className="hidden lg:block w-64 flex-shrink-0 sticky top-0 self-start pt-4 pb-4">
-        <div
-          className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-md overflow-hidden"
-          style={{ height: `calc(100vh - ${footerOverlap}px - 2rem)` }}
-        >
-          <div className="h-full overflow-y-auto p-4">
-              <h2 className="text-xl font-semibold mb-4">Similar papers</h2>
-              {error && (
-                <div className="text-sm mb-4 p-3 rounded-md border border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-900/40 dark:text-red-300">
-                  {error}
-                </div>
-              )}
-              {isLoading && (
-                <div className="flex items-center text-sm text-gray-500 dark:text-gray-400 mb-4">
-                  <Loader className="animate-spin w-4 h-4 mr-2" /> Loading list...
-                </div>
-              )}
-              <ul className="space-y-1">
-                {similarItems.map(({ key, title, authors, thumbnail_data_url, slug }) => {
-                  const target = slug || key;
-                  return (
-                    <li key={key}>
-                      <a
-                        href={`/paper/${encodeURIComponent(target)}`}
-                        className="block w-full text-left px-3 py-2 rounded-md text-sm transition-colors bg-white dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200"
-                        title={`Open ${title || key}`}
-                        aria-label={`Open ${title || key}`}
-                      >
-                        <div className="flex items-start gap-3">
-                          <div className="w-16 h-16 bg-gray-200 dark:bg-gray-600 rounded-md flex-shrink-0 overflow-hidden">
-                            {thumbnail_data_url && (
-                              <img src={thumbnail_data_url} alt="" className="w-16 h-16 object-cover" />
-                            )}
-                          </div>
-                          <div className="min-w-0">
-                            <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">{title || key + '.json'}</div>
-                            {authors && (
-                              <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">{authors}</div>
-                            )}
-                          </div>
-                        </div>
-                      </a>
-                    </li>
-                  );
-                })}
-              </ul>
-              {availableFiles.filter((f) => f !== (selectedFile ?? '')).length === 0 && (
-                <p className="text-sm text-gray-500 dark:text-gray-400">No other preloaded papers found. Add more JSON files to <span className="font-mono">data/paperjsons/</span>.</p>
-              )}
-          </div>
-        </div>
-      </div>
-
-      {/* No sections on mobile: floating TOC button and drawer removed */}
 
       {isModalOpen && paperData && modalData && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-2 sm:p-4" onClick={closeModal}>
