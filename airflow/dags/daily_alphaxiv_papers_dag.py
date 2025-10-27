@@ -119,6 +119,12 @@ def database_session():
     catchup=False,
     tags=["alphaxiv", "papers"],
     params={
+        "date_to_fetch": Param(
+            type="string",
+            default=pendulum.yesterday().to_date_string(),
+            title="Date to Fetch",
+            description="The date for which to fetch papers, in YYYY-MM-DD format. Papers from the 3 days before this date will be fetched."
+        ),
         "papers_to_add": Param(
             type="integer",
             default=10,
@@ -135,17 +141,22 @@ def database_session():
     - Fetches papers sorted by "Hot" ranking from AlphaXiv API
     - Extracts popularity signals (total votes, visits, GitHub stars)
     - Adds top papers to the processing queue for summarization
-    - When run manually, you can customize the page size, time interval, and number of papers to add.
+    - When run on its daily schedule, it fetches papers for the previous day.
+    - When run manually, you can specify a date and the number of papers to add.
     """,
 )
 def daily_alphaxiv_papers_dag():
 
     @task
-    def fetch_hot_papers() -> List[Dict[str, Any]]:
+    def fetch_hot_papers(date_to_fetch: str) -> List[Dict[str, Any]]:
         """
         Fetch hot papers from AlphaXiv API across all available pages.
 
         Uses PAGE_SIZE and TIME_INTERVAL constants defined at module level.
+
+        Args:
+            date_to_fetch: The date to fetch papers for, in YYYY-MM-DD format.
+                          Papers from the 3 days before this date will be fetched.
 
         Returns:
             List[Dict[str, Any]]: List of paper data from all pages
@@ -153,7 +164,8 @@ def daily_alphaxiv_papers_dag():
         Raises:
             Exception: If API call fails or returns invalid data
         """
-        print(f"Fetching hot papers from AlphaXiv (pageSize={PAGE_SIZE}, interval={TIME_INTERVAL})")
+        print(f"Fetching hot papers from AlphaXiv for {date_to_fetch}")
+        print(f"  (pageSize={PAGE_SIZE}, interval={TIME_INTERVAL})")
         print(f"API URL: {ALPHAXIV_API_URL}")
 
         all_papers = []
@@ -344,9 +356,10 @@ def daily_alphaxiv_papers_dag():
             print(f"===========================\n")
 
     # Define task dependencies
+    date_str = "{{ params.date_to_fetch }}"
     num_papers = "{{ params.papers_to_add }}"
 
-    papers = fetch_hot_papers()
+    papers = fetch_hot_papers(date_to_fetch=date_str)
     print_papers_info(papers)
     add_top_papers_to_queue(papers, papers_to_add=num_papers)
 
