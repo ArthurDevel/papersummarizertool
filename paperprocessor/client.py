@@ -10,9 +10,7 @@ from paperprocessor.models import ProcessedDocument, ProcessedPage, ApiCallCostF
 from paperprocessor.internals.pdf_to_image import convert_pdf_to_images
 from paperprocessor.internals.mistral_ocr import extract_markdown_from_pages
 from paperprocessor.internals.metadata_extractor import extract_metadata
-from paperprocessor.internals.structure_extractor import extract_structure
 from paperprocessor.internals.header_formatter import format_headers, format_images
-from paperprocessor.internals.section_rewriter import rewrite_sections
 from paperprocessor.internals.summary_generator import generate_five_minute_summary
 from shared.db import SessionLocal
 from papers.client import get_paper_metadata
@@ -165,31 +163,30 @@ def get_processing_metrics_for_admin(paper_uuid: str) -> Dict[str, Any]:
 
 async def process_paper_pdf(pdf_contents: bytes, paper_id: Optional[str] = None) -> ProcessedDocument:
         """
-        5-step pipeline:
+        Simplified 4-step pipeline:
         1. OCR → markdown per page
-        2. Extract metadata  
-        3. Extract structural elements
-        4. Format headers
-        5. Rewrite sections
+        2. Extract metadata
+        3. Format headers and images
+        4. Generate summary from original content
         """
-        logger.info("Paper processing pipeline v2 started.")
-        
+        logger.info("Paper processing pipeline v2 started (simplified).")
+
         # Create ProcessedDocument DTO with PDF base64
         pdf_base64 = base64.b64encode(pdf_contents).decode('utf-8')
-        
+
         logger.info("Converting PDF to images for page image storage...")
         images = await convert_pdf_to_images(pdf_contents)
-        
+
         # Create ProcessedPages with base64 encoded images
         pages = []
         for i, image in enumerate(images):
             page_num = i + 1
-            
+
             # Convert PIL Image to base64
             buffered = io.BytesIO()
             image.save(buffered, format="PNG")
             img_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
-            
+
             page = ProcessedPage(
                 page_number=page_num,
                 img_base64=img_base64,
@@ -197,39 +194,32 @@ async def process_paper_pdf(pdf_contents: bytes, paper_id: Optional[str] = None)
                 height=image.height
             )
             pages.append(page)
-        
+
         document = ProcessedDocument(
             pdf_base64=pdf_base64,
             pages=pages
         )
-        
+
         # Step 1: OCR pages to markdown - populates ocr_markdown
         logger.info("Step 1: OCR pages to markdown.")
         await extract_markdown_from_pages(document)
-        
+
         # Step 2: Extract metadata (title, authors) - modifies document in place
         logger.info("Step 2: Extracting metadata.")
         await extract_metadata(document)
-        
-        # Step 3: Extract structural elements (headers) - modifies document in place
-        logger.info("Step 3: Extracting structural elements.")
-        await extract_structure(document)
-        
-        # Step 4: Format headers to # levels - modifies document in place
-        logger.info("Step 4: Formatting headers.")
+
+        # Step 3: Format headers and combine pages - modifies document in place
+        # Note: Without structure extraction, this only combines OCR markdown into final_markdown
+        logger.info("Step 3: Formatting document (combining pages).")
         await format_headers(document)
-        
-        # Step 4b: Format inline image references - modifies document in place
-        logger.info("Step 4b: Formatting inline image references.")
+
+        # Step 3b: Format inline image references - modifies document in place
+        logger.info("Step 3b: Formatting inline image references.")
         await format_images(document)
-        
-        # Step 5: Rewrite sections - modifies document in place
-        logger.info("Step 5: Rewriting sections.")
-        await rewrite_sections(document)
-        
-        # Step 6: Generate 5-minute summary - modifies document in place
-        logger.info("Step 6: Generating 5-minute summary.")
+
+        # Step 4: Generate 5-minute summary from original OCR content - modifies document in place
+        logger.info("Step 4: Generating 5-minute summary.")
         await generate_five_minute_summary(document)
-        
-        logger.info("Paper processing pipeline v2 finished.")
+
+        logger.info("Paper processing pipeline v2 finished (simplified).")
         return document

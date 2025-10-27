@@ -230,14 +230,15 @@ async def _process_paper_job_complete(job: JobInfo) -> None:
     tags=["papers", "worker"],
     doc_md="""
     ### Paper Processing Worker DAG
-    
+
     This DAG continuously processes papers from the queue that are in 'not_started' status.
-    
+
     - Runs every 2 minutes to check for new papers
-    - Processes papers through: PDF download → OCR/processing → saving → slug creation
+    - Processes papers through simplified pipeline: PDF download → OCR → metadata extraction → summary generation → saving → slug creation
     - Uses database locking to prevent race conditions
     - Handles errors gracefully and marks failed jobs
-    
+
+    Simplified pipeline (no section rewriting): faster processing and lower costs.
     Replaces the previous supervisord-based worker with better Airflow integration.
     """,
 )

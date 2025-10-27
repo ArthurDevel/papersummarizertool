@@ -135,17 +135,20 @@ def _format_page_markdown(original_markdown: str, page_headers: List[Header]) ->
 
 async def format_headers(document: ProcessedDocument) -> None:
     """
-    Step 4: Format header levels and add section tags to document markdown.
-    
-    Process:
+    Combine OCR pages into final_markdown document.
+
+    In simplified pipeline (without structure extraction):
+    - Simply combines all page OCR markdown into document.final_markdown
+    - No header formatting or section tagging since document.headers will be empty
+
+    Legacy behavior (if headers are populated):
     1. Formats header levels (# count) for lines that already start with # and are confirmed headers
     2. Inserts <<section>> tags before document_section and document_section_references headers
     3. Creates document.final_markdown by combining all processed pages
-    
-    Only modifies header lines that OCR detected as headers (start with #) AND are in our headers list.
+
     Preserves original OCR markdown in pages.
     """
-    logger.info("Formatting headers and adding section tags to document...")
+    logger.info("Combining pages into final_markdown...")
     
     if not document.headers:
         logger.info("No headers found in document, creating final_markdown from OCR content")
