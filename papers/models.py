@@ -27,7 +27,7 @@ class Section(BaseModel):
 
 class ExternalPopularitySignal(BaseModel):
     """External popularity metrics from various sources. This will be used in ranking papers."""
-    source: Literal["HuggingFace"]  # Only HF for now, expandable
+    source: Literal["HuggingFace", "AlphaXiv"]  # Expandable to more sources
     values: Dict[str, Any]  # Flexible values per source
     fetch_info: Dict[str, Any]  # Refetch metadata per source
     updated_at: datetime = Field(default_factory=datetime.utcnow)
