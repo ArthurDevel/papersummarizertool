@@ -71,3 +71,6 @@ logs/scheduler/latest
 
 # Test script outputs
 testscripts/2025.10.07-test-hume-tts/output
+
+# IDE
+.claude/settings.local.json

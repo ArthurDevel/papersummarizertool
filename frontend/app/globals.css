@@ -74,3 +74,18 @@
 .prose blockquote {
   overflow-x: auto;
 }
+
+/* =============================================================
+   Background dot pattern
+   ============================================================= */
+body {
+  background-image: radial-gradient(theme('colors.gray.300') 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* Dark mode: subtle darker dots instead of bright ones */
+@media (prefers-color-scheme: dark) {
+  body {
+    background-image: radial-gradient(theme('colors.gray.700') 1px, transparent 1px);
+  }
+}

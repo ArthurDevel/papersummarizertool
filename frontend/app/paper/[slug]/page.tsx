@@ -297,7 +297,7 @@ export default function LayoutTestsPage() {
 
             {/* 5-Minute Summary */}
             {paperData.five_minute_summary && (
-              <div ref={summaryRef} className="mb-6 sm:mb-8 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg shadow-md overflow-hidden">
+              <div ref={summaryRef} className="mb-6 sm:mb-8 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg shadow-md overflow-hidden">
                 <div className="p-3 sm:p-4">
                   <div className="flex items-center gap-2 mb-3">
                     <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
