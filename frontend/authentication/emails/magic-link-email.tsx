@@ -26,20 +26,20 @@ import {
   }: MagicLinkEmailProps) => (
     <Html>
       <Head />
-      <Preview>Your Magic Link to Sign In to PaperSummarizer</Preview>
+      <Preview>Your Magic Link to Sign In to Open Paper Digest</Preview>
       <Body style={main}>
         <Container style={container}>
           <Img
             src={`${baseUrl}/static/logo.png`}
             width="42"
             height="42"
-            alt="PaperSummarizer Logo"
+            alt="Open Paper Digest Logo"
             style={logo}
           />
           <Heading style={heading}>Your Magic Link</Heading>
           <Section style={buttonContainer}>
             <Button style={button} href={magicLink}>
-              Sign in to PaperSummarizer
+              Sign in to Open Paper Digest
             </Button>
           </Section>
           <Text style={paragraph}>

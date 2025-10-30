@@ -52,7 +52,7 @@ export const auth = betterAuth({
           }
 
           await resend.emails.send({
-            from: 'PaperSummarizer <authentication@notifications.itempasshomelab.org>',
+            from: 'Open Paper Digest <authentication@notifications.itempasshomelab.org>',
             to: [email],
             subject,
             html,

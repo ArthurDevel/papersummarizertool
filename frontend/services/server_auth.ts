@@ -32,7 +32,7 @@ export const auth = betterAuth({
           }
 
           await resend.emails.send({
-            from: 'PaperSummarizer <login@resend.dev>', // TODO: Replace with your domain
+            from: 'Open Paper Digest <login@resend.dev>', // TODO: Replace with your domain
             to: [email],
             subject,
             html,

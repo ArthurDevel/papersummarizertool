@@ -74,7 +74,7 @@ export default function CheckPaperPage() {
             </div>
 
             <div className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-md overflow-hidden p-4">
-              <h2 className="text-xl font-semibold mb-2">This paper is not yet available on PaperSummarizer</h2>
+              <h2 className="text-xl font-semibold mb-2">This paper is not yet available on Open Paper Digest</h2>
               <p className="text-sm text-gray-700 dark:text-gray-300 mb-3">Request this paper for processing using the button below</p>
               <RequestPaperButton arxivId={(metadata?.arxiv_id || arxivId)} />
             </div>

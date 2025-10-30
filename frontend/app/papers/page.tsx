@@ -46,7 +46,7 @@ export default function AllPapersPage() {
             Request a paper
           </button>
         </div>
-        <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">Listing contents of <span className="font-mono">data/paperjsons/</span>.</p>
+        <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">Your daily dose of snackable papers.</p>
 
         {error && (
           <div className="mb-4 p-3 rounded-md border border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-900/40 dark:text-red-300">

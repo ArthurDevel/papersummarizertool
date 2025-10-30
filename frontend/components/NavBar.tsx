@@ -35,17 +35,12 @@ export default function NavBar({ className = '' }: NavBarProps) {
   return (
     <nav className={`w-full ${className}`}>
       <div className="w-full px-4 sm:px-6 lg:px-10 pt-7 pb-3 flex items-center justify-between">
-        <div className="text-base font-semibold text-gray-900 dark:text-gray-100">PaperSummarizer</div>
+        <div className="text-base font-semibold text-gray-900 dark:text-gray-100">Open Paper Digest</div>
 
         <ul className="hidden md:flex items-center gap-6">
           <li>
             <Link href="/papers" className="text-sm text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors">
               All Papers
-            </Link>
-          </li>
-          <li>
-            <Link href="/arxiv-search" className="text-sm text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors">
-              Arxiv Search
             </Link>
           </li>
           {/*<li>
@@ -116,19 +111,12 @@ export default function NavBar({ className = '' }: NavBarProps) {
         <div className="md:hidden border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
           <div className="px-4 py-4">
             <nav className="space-y-3 text-center">
-              <Link 
-                href="/papers" 
+              <Link
+                href="/papers"
                 onClick={closeMobileMenu}
                 className="block py-2 text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
               >
                 All Papers
-              </Link>
-              <Link 
-                href="/arxiv-search" 
-                onClick={closeMobileMenu}
-                className="block py-2 text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
-              >
-                Arxiv Search
               </Link>
               <Link
                 href="https://github.com/ArthurDevel/papersummarizertool"

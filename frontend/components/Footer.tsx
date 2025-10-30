@@ -10,7 +10,7 @@ export default function Footer({ className = '' }: FooterProps) {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 text-sm text-gray-600 dark:text-gray-300">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <span className="font-semibold text-gray-900 dark:text-gray-100">PaperSummarizer</span>
+            <span className="font-semibold text-gray-900 dark:text-gray-100">Open Paper Digest</span>
             <span className="text-gray-400">·</span>
             <span>Open research tools for everyone</span>
           </div>
@@ -21,7 +21,7 @@ export default function Footer({ className = '' }: FooterProps) {
           </div>
         </div>
         <div className="mt-4 text-xs text-gray-400">
-          © {new Date().getFullYear()} PaperSummarizer. All rights reserved.
+          © {new Date().getFullYear()} Open Paper Digest. All rights reserved.
         </div>
       </div>
     </footer>

@@ -35,7 +35,7 @@ export const AddToListMagicLinkEmail = ({
           src={`${baseUrl}/static/logo.png`}
           width="42"
           height="42"
-          alt="PaperSummarizer Logo"
+          alt="Open Paper Digest Logo"
           style={logo}
         />
         <Heading style={heading}>Add to your list</Heading>

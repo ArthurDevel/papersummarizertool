@@ -35,7 +35,7 @@ export const RequestPaperMagicLinkEmail = ({
           src={`${baseUrl}/static/logo.png`}
           width="42"
           height="42"
-          alt="PaperSummarizer Logo"
+          alt="Open Paper Digest Logo"
           style={logo}
         />
         <Heading style={heading}>Confirm your notification</Heading>
