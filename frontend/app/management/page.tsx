@@ -8,6 +8,7 @@ export default function ManagementPage() {
   const [dbPapers, setDbPapers] = useState<JobDbStatus[]>([]);
   const [requested, setRequested] = useState<RequestedPaper[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [processingUuid, setProcessingUuid] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [openMenuUuid, setOpenMenuUuid] = useState<string | null>(null);
 
@@ -135,8 +136,11 @@ export default function ManagementPage() {
                 </thead>
                 <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                   {requested.map((r) => (
-                    <tr key={r.arxiv_id} className="relative">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">{r.arxiv_id}</td>
+                    <tr key={r.arxiv_id} className={processingUuid === r.arxiv_id ? 'opacity-60' : ''}>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                        {processingUuid === r.arxiv_id && <span className="inline-block animate-spin mr-2">⟳</span>}
+                        {r.arxiv_id}
+                      </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm max-w-md truncate" title={r.title || ''}>{r.title || '-'}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm max-w-md truncate" title={r.authors || ''}>{r.authors || '-'}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm">{typeof r.num_pages === 'number' ? r.num_pages : '-'}</td>
@@ -152,10 +156,11 @@ export default function ManagementPage() {
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
                         <div className="inline-flex items-center gap-2">
                           <button
-                            className="px-3 py-1 rounded-md border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700"
+                            className="px-3 py-1 rounded-md border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                            disabled={processingUuid !== null}
                             onClick={async () => {
                               try {
-                                setIsLoading(true);
+                                setProcessingUuid(r.arxiv_id);
                                 setError(null);
                                 // Start processing via API
                                 await fetch(`/api/admin/requested_papers/${encodeURIComponent(r.arxiv_id)}/start_processing`, { method: 'POST' });
@@ -169,16 +174,16 @@ export default function ManagementPage() {
                               } catch (e) {
                                 setError(e instanceof Error ? e.message : 'Failed to start processing');
                               } finally {
-                                setIsLoading(false);
+                                setProcessingUuid(null);
                               }
                             }}
                           >
-                            Start
+                            {processingUuid === r.arxiv_id ? '⟳' : 'Start'}
                           </button>
                           <div className="relative inline-block text-left">
-                            <Menu arxivId={r.arxiv_id} onDeleted={async () => {
+                            <Menu arxivId={r.arxiv_id} disabled={processingUuid !== null} onDeleted={async () => {
                               try {
-                                setIsLoading(true);
+                                setProcessingUuid(r.arxiv_id);
                                 setError(null);
                                 await deleteRequestedPaper(r.arxiv_id);
                                 const reqList = await listRequestedPapers();
@@ -186,7 +191,7 @@ export default function ManagementPage() {
                               } catch (e) {
                                 setError(e instanceof Error ? e.message : 'Failed to delete request');
                               } finally {
-                                setIsLoading(false);
+                                setProcessingUuid(null);
                               }
                             }} />
                           </div>
@@ -229,8 +234,11 @@ export default function ManagementPage() {
                 </thead>
                 <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                   {dbPapers.map((r) => (
-                    <tr key={r.paper_uuid}>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium max-w-xs truncate" title={r.title || ''}>{r.title || '-'}</td>
+                    <tr key={r.paper_uuid} className={processingUuid === r.paper_uuid ? 'opacity-60' : ''}>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium max-w-xs truncate" title={r.title || ''}>
+                        {processingUuid === r.paper_uuid && <span className="inline-block animate-spin mr-2">⟳</span>}
+                        {r.title || '-'}
+                      </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400 max-w-sm truncate" title={r.authors || ''}>{r.authors || '-'}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">{r.arxiv_id}{r.arxiv_version || ''}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{r.paper_uuid}</td>
@@ -265,7 +273,8 @@ export default function ManagementPage() {
                       <td className="px-6 py-4 text-sm text-red-600 dark:text-red-400 max-w-xs truncate" title={r.error_message || ''}>{r.error_message || ''}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm relative">
                         <button
-                          className="px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
+                          className="px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                          disabled={processingUuid !== null}
                           onClick={() => toggleMenu(r.paper_uuid)}
                           aria-label="Actions"
                           title="Actions"
@@ -275,10 +284,11 @@ export default function ManagementPage() {
                         {openMenuUuid === r.paper_uuid && (
                           <div className="absolute right-0 mt-2 w-40 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-10">
                             <button
-                              className="block w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
+                              className="block w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                              disabled={processingUuid !== null}
                               onClick={async () => {
                                 try {
-                                  setIsLoading(true);
+                                  setProcessingUuid(r.paper_uuid);
                                   setError(null);
                                   const filename = `${r.paper_uuid}.json`;
                                   const res = await fetch(`/layouttests/data?file=${encodeURIComponent(filename)}`, { cache: 'no-store' });
@@ -296,7 +306,7 @@ export default function ManagementPage() {
                                 } catch (e) {
                                   setError(e instanceof Error ? e.message : 'Failed to download');
                                 } finally {
-                                  setIsLoading(false);
+                                  setProcessingUuid(null);
                                   setOpenMenuUuid(null);
                                 }
                               }}
@@ -304,10 +314,11 @@ export default function ManagementPage() {
                               Download JSON
                             </button>
                             <button
-                              className="block w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
+                              className="block w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                              disabled={processingUuid !== null}
                               onClick={async () => {
                                 try {
-                                  setIsLoading(true);
+                                  setProcessingUuid(r.paper_uuid);
                                   setError(null);
                                   const res = await fetch(`/api/admin/papers/${encodeURIComponent(r.paper_uuid)}/restart`, { method: 'POST' });
                                   if (!res.ok) {
@@ -319,7 +330,7 @@ export default function ManagementPage() {
                                 } catch (e) {
                                   setError(e instanceof Error ? e.message : 'Failed to restart');
                                 } finally {
-                                  setIsLoading(false);
+                                  setProcessingUuid(null);
                                   setOpenMenuUuid(null);
                                 }
                               }}
@@ -327,11 +338,12 @@ export default function ManagementPage() {
                               Restart
                             </button>
                             <button
-                              className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30"
+                              className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 disabled:opacity-50 disabled:cursor-not-allowed"
+                              disabled={processingUuid !== null}
                               onClick={async () => {
                                 try {
                                   if (!confirm('Delete this paper? This will also delete the JSON file.')) return;
-                                  setIsLoading(true);
+                                  setProcessingUuid(r.paper_uuid);
                                   setError(null);
                                   const res = await fetch(`/api/admin/papers/${encodeURIComponent(r.paper_uuid)}`, { method: 'DELETE' });
                                   if (!res.ok) {
@@ -343,7 +355,7 @@ export default function ManagementPage() {
                                 } catch (e) {
                                   setError(e instanceof Error ? e.message : 'Failed to delete');
                                 } finally {
-                                  setIsLoading(false);
+                                  setProcessingUuid(null);
                                   setOpenMenuUuid(null);
                                 }
                               }}
@@ -372,14 +384,15 @@ export default function ManagementPage() {
   );
 }
 
-function Menu({ arxivId, onDeleted }: { arxivId: string; onDeleted: () => void }) {
+function Menu({ arxivId, disabled, onDeleted }: { arxivId: string; disabled: boolean; onDeleted: () => void }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="relative">
       <button
-        className="px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
+        className="px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
         aria-haspopup="menu"
         aria-expanded={open}
+        disabled={disabled}
         onClick={() => setOpen((v) => !v)}
         title="Actions"
       >
@@ -388,7 +401,8 @@ function Menu({ arxivId, onDeleted }: { arxivId: string; onDeleted: () => void }
       {open && (
         <div className="absolute right-0 mt-2 w-40 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-10">
           <button
-            className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30"
+            className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={disabled}
             onClick={async () => {
               setOpen(false);
               if (!confirm(`Delete request for ${arxivId}?`)) return;

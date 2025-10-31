@@ -78,7 +78,7 @@ def admin_list_papers(status: Optional[str] = None, limit: int = 500, db: Sessio
             title=r.title,
             authors=r.authors,
             num_pages=r.num_pages,
-            thumbnail_data_url=getattr(r, 'thumbnail_data_url', None),
+            thumbnail_data_url=None,  # Not needed in admin list view
             processing_time_seconds=r.processing_time_seconds,
             total_cost=r.total_cost,
             avg_cost_per_page=r.avg_cost_per_page,
