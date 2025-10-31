@@ -18,14 +18,27 @@ export PYTHONPATH="/opt/airflow/shared:/opt/airflow/papers:/opt/airflow/users:/o
 echo "Initializing Airflow database..."
 airflow db init
 
-echo "Creating admin user..."
-airflow users create \
+echo "Setting up admin user..."
+# Require ADMIN_BASIC_PASSWORD to be set
+if [ -z "$ADMIN_BASIC_PASSWORD" ]; then
+    echo "ERROR: ADMIN_BASIC_PASSWORD environment variable is not set!"
+    echo "Please set ADMIN_BASIC_PASSWORD to secure your Airflow instance."
+    exit 1
+fi
+
+# Try to create user, if it fails (user exists), update the password instead
+if airflow users create \
     --username admin \
-    --password admin \
+    --password "$ADMIN_BASIC_PASSWORD" \
     --firstname Anonymous \
     --lastname User \
     --role Admin \
-    --email admin@example.org
+    --email admin@example.org 2>&1 | grep -q "already exists"; then
+    echo "Admin user already exists, updating password..."
+    airflow users reset-password \
+        --username admin \
+        --password "$ADMIN_BASIC_PASSWORD"
+fi
 
 echo "Starting Airflow scheduler and webserver..."
 exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf

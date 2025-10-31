@@ -15,10 +15,12 @@ Add these to your Railway Airflow service:
 ```
 RAILWAY_DOCKERFILE_PATH=airflow/Dockerfile
 AIRFLOW__CORE__EXECUTOR=LocalExecutor
-AIRFLOW__CORE__DAGS_FOLDER=/opt/airflow-data/dags 
+AIRFLOW__CORE__DAGS_FOLDER=/opt/airflow-data/dags
 AIRFLOW__LOGGING__BASE_LOG_FOLDER=/opt/airflow-data/logs
 AIRFLOW__CORE__PLUGINS_FOLDER=/opt/airflow-data/plugins
+ADMIN_BASIC_PASSWORD=your_secure_password_here
 ```
+
 
 **Volume Mount:**
 - Mount Railway volume at: `/opt/airflow-data`
@@ -28,11 +30,11 @@ AIRFLOW__CORE__PLUGINS_FOLDER=/opt/airflow-data/plugins
 - Leave empty (uses entrypoint automatically)
 
 **What It Does:**
-1. Sets up volume permissions  
+1. Sets up volume permissions
 2. Copies DAGs from `/opt/airflow/dags` to `/opt/airflow-data/dags` (volume path changed)
 3. Sets Python path for shared modules (shared, papers, users, paperprocessor)
 4. Initializes database (`airflow db init`)
-5. Creates admin user (admin/admin)
+5. Creates admin user with password from `ADMIN_BASIC_PASSWORD` env var
 6. Starts both scheduler and webserver via supervisord
 
 **CRITICAL:** Add your DAG environment variables (database credentials, API keys, etc.) to this service since both scheduler and webserver run here.
