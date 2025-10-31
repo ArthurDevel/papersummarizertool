@@ -191,16 +191,16 @@ def list_minimal_papers(db: Session) -> List[Dict[str, Any]]:
     """
     List all completed papers with minimal fields for overview page.
     Reads from database only.
-    
+
     Args:
         db: Active database session
-        
+
     Returns:
-        List[Dict]: List of papers with paper_uuid, title, authors, thumbnail_data_url, slug
+        List[Dict]: List of papers with paper_uuid, title, authors, thumbnail_url, slug
     """
     # Step 1: Query all completed papers from database
     completed_papers = list_paper_records(db, statuses=["completed"], limit=1000)
-    
+
     # Step 2: Build slug mapping (latest non-tombstone per paper_uuid)
     slug_records = get_all_paper_slugs(db, non_tombstone_only=True)
     slug_dtos = [PaperSlug.model_validate(record) for record in slug_records]
@@ -212,7 +212,7 @@ def list_minimal_papers(db: Session) -> List[Dict[str, Any]]:
         current = latest_by_uuid.get(puid)
         if current is None or (slug_dto.created_at and current.get("created_at") and slug_dto.created_at > current["created_at"]):
             latest_by_uuid[puid] = {"slug": slug_dto.slug, "created_at": slug_dto.created_at}
-    
+
     # Step 3: Build minimal paper items with slug mapping
     items: List[Dict[str, Any]] = []
     for record in completed_papers:
@@ -220,16 +220,16 @@ def list_minimal_papers(db: Session) -> List[Dict[str, Any]]:
             "paper_uuid": record.paper_uuid,
             "title": record.title,
             "authors": record.authors,
-            "thumbnail_data_url": record.thumbnail_data_url,
+            "thumbnail_url": f"/api/papers/thumbnails/{record.paper_uuid}" if record.thumbnail_data_url else None,
         }
-        
+
         # Add slug if available
         slug_mapping = latest_by_uuid.get(record.paper_uuid)
         if slug_mapping:
             item["slug"] = slug_mapping["slug"]
-        
+
         items.append(item)
-    
+
     return items
 
 

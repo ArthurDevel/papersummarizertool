@@ -31,7 +31,7 @@ export default function LayoutTestsPage() {
   
   const [availableFiles, setAvailableFiles] = useState<string[]>([]);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
-  const [similarItems, setSimilarItems] = useState<Array<{ key: string; title: string | null; authors: string | null; thumbnail_data_url: string | null; slug: string | null }>>([]);
+  const [similarItems, setSimilarItems] = useState<Array<{ key: string; title: string | null; authors: string | null; thumbnail_url: string | null; slug: string | null }>>([]);
   const abortRef = useRef<AbortController | null>(null);
   const mainRef = useRef<HTMLDivElement | null>(null);
   const summaryRef = useRef<HTMLDivElement | null>(null);
@@ -151,7 +151,7 @@ export default function LayoutTestsPage() {
         const othersByUuid = new Set(others.map((n) => n.replace(/\.json$/i, '')));
         const results = all
           .filter((it) => othersByUuid.has(it.paper_uuid))
-          .map((it) => ({ key: it.paper_uuid, title: it.title, authors: it.authors, thumbnail_data_url: it.thumbnail_data_url, slug: it.slug }));
+          .map((it) => ({ key: it.paper_uuid, title: it.title, authors: it.authors, thumbnail_url: it.thumbnail_url, slug: it.slug }));
         setSimilarItems(results);
       } catch {
         setSimilarItems([]);
@@ -326,7 +326,7 @@ export default function LayoutTestsPage() {
                 <div className="p-3 sm:p-4">
                   <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-gray-100">Similar papers</h2>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {similarItems.map(({ key, title, authors, thumbnail_data_url, slug }) => {
+                    {similarItems.map(({ key, title, authors, thumbnail_url, slug }) => {
                       const target = slug || key;
                       return (
                         <a
@@ -338,8 +338,8 @@ export default function LayoutTestsPage() {
                         >
                           <div className="flex items-start gap-3">
                             <div className="w-16 h-16 bg-gray-200 dark:bg-gray-600 rounded-md flex-shrink-0 overflow-hidden">
-                              {thumbnail_data_url && (
-                                <img src={thumbnail_data_url} alt="" className="w-16 h-16 object-cover" />
+                              {thumbnail_url && (
+                                <img src={thumbnail_url} alt="" className="w-16 h-16 object-cover" />
                               )}
                             </div>
                             <div className="min-w-0 flex-1">

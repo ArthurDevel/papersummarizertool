@@ -71,5 +71,5 @@ class MinimalPaperItem(BaseModel):
     paper_uuid: str
     title: Optional[str] = None
     authors: Optional[str] = None
-    thumbnail_data_url: Optional[str] = None
+    thumbnail_url: Optional[str] = None
     slug: Optional[str] = None

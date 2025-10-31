@@ -285,6 +285,55 @@ async def get_arxiv_metadata(arxiv_id_or_url: str):
         raise HTTPException(status_code=500, detail="Failed to fetch metadata from arXiv API")
 
 
+@router.get("/papers/thumbnails/{paper_uuid}")
+def get_thumbnail(paper_uuid: str, db: Session = Depends(get_session)):
+    """
+    Serves the thumbnail image for a paper as image bytes.
+    Extracts base64 data from the database and returns it as an image.
+    Supports both PNG and JPEG formats.
+    Supports browser caching via HTTP headers.
+    """
+    from sqlalchemy.orm import defer
+    import base64
+
+    # Query only the thumbnail field to minimize data transfer
+    record = db.query(PaperRecord).options(
+        defer(PaperRecord.processed_content)
+    ).filter(PaperRecord.paper_uuid == paper_uuid).first()
+
+    if not record or not record.thumbnail_data_url:
+        raise HTTPException(status_code=404, detail="Thumbnail not found")
+
+    # Determine format and extract base64 from data URL
+    data_url = record.thumbnail_data_url
+
+    if data_url.startswith("data:image/png;base64,"):
+        media_type = "image/png"
+        base64_data = data_url.split(",", 1)[1]
+    elif data_url.startswith("data:image/jpeg;base64,"):
+        media_type = "image/jpeg"
+        base64_data = data_url.split(",", 1)[1]
+    elif data_url.startswith("data:image/jpg;base64,"):
+        media_type = "image/jpeg"
+        base64_data = data_url.split(",", 1)[1]
+    else:
+        logger.error(f"Unsupported thumbnail format for {paper_uuid}: {data_url[:50]}...")
+        raise HTTPException(status_code=404, detail="Invalid thumbnail format")
+
+    try:
+        image_bytes = base64.b64decode(base64_data)
+        return Response(
+            content=image_bytes,
+            media_type=media_type,
+            headers={
+                "Cache-Control": "public, max-age=31536000, immutable",  # Cache for 1 year
+            }
+        )
+    except Exception as e:
+        logger.error(f"Failed to decode thumbnail for {paper_uuid}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to decode thumbnail")
+
+
 
 
 # --- Slug generation and resolution ---

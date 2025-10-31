@@ -60,12 +60,12 @@ export default function AllPapersPage() {
           <div className="text-gray-600 dark:text-gray-300">No papers found. Add JSON files to <span className="font-mono">data/paperjsons/</span>.</div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {items.map(({ paper_uuid, title, authors, thumbnail_data_url, slug }) => (
+            {items.map(({ paper_uuid, title, authors, thumbnail_url, slug }) => (
               <Link key={paper_uuid} href={slug ? `/paper/${encodeURIComponent(slug)}` : '#'} className={`group ${slug ? '' : 'pointer-events-none opacity-60'}`}>
                 <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden shadow-sm h-full">
                   <div className="w-full aspect-square bg-gray-100 dark:bg-gray-700 flex items-center justify-center overflow-hidden">
-                    {thumbnail_data_url ? (
-                      <img src={thumbnail_data_url} alt="" className="w-full h-full object-cover" />
+                    {thumbnail_url ? (
+                      <img src={thumbnail_url} alt="" className="w-full h-full object-cover" />
                     ) : (
                       <div className="text-gray-400 text-sm">No thumbnail</div>
                     )}

@@ -74,6 +74,6 @@ export interface MinimalPaperItem {
   paper_uuid: string;
   title: string | null;
   authors: string | null;
-  thumbnail_data_url: string | null;
+  thumbnail_url: string | null;
   slug: string | null;
 }
