@@ -417,19 +417,83 @@ def get_slug_for_paper(paper_uuid: UUID, db: Session = Depends(get_session)):
     return ResolveSlugResponse(paper_uuid=row.paper_uuid, slug=row.slug, tombstone=False)
 
 
+@router.get("/papers/{paper_uuid}/summary")
+def get_paper_summary(paper_uuid: UUID, db: Session = Depends(get_session)):
+    """
+    Get lightweight paper summary with metadata only.
+    Returns only the essential fields needed for the paper detail page:
+    title, authors, arxiv_url, five_minute_summary, page_count, thumbnail_url.
+
+    This endpoint is much faster than /papers/{paper_uuid} because it doesn't
+    include the full page images, figures, or complete section content.
+
+    Args:
+        paper_uuid: UUID of the paper to retrieve
+        db: Database session
+
+    Returns:
+        dict: Paper summary with essential metadata
+
+    Raises:
+        404: If paper not found or no processed content available
+        500: If JSON parsing fails
+    """
+    try:
+        # Get paper record - defer processed_content initially to check if it exists
+        from sqlalchemy.orm import defer, undefer
+        record = db.query(PaperRecord).options(
+            defer(PaperRecord.processed_content)
+        ).filter(PaperRecord.paper_uuid == str(paper_uuid)).first()
+
+        if not record:
+            raise HTTPException(status_code=404, detail="Paper not found")
+
+        # Now load processed_content to extract five_minute_summary
+        db.refresh(record, ['processed_content'])
+
+        if not record.processed_content:
+            raise HTTPException(status_code=404, detail="No processed content available for this paper")
+
+        # Parse JSON to extract five_minute_summary and page count
+        import json
+        paper_json = json.loads(record.processed_content)
+
+        # Build lightweight response
+        summary = {
+            "paper_id": str(paper_uuid),
+            "title": record.title,
+            "authors": record.authors,
+            "arxiv_url": record.arxiv_url,
+            "five_minute_summary": paper_json.get("five_minute_summary"),
+            "page_count": len(paper_json.get("pages", [])),
+            "thumbnail_url": f"/api/papers/thumbnails/{paper_uuid}" if record.thumbnail_data_url else None
+        }
+
+        return summary
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to retrieve paper summary for {paper_uuid}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve paper summary: {str(e)}")
+
+
 @router.get("/papers/{paper_uuid}")
 def get_paper_json(paper_uuid: UUID, db: Session = Depends(get_session)):
     """
     Get complete paper JSON including all processed content.
     Returns the raw JSON format used by the frontend viewer.
-    
+
+    WARNING: This endpoint returns large payloads (10-20 MB) including all page images.
+    Consider using /papers/{paper_uuid}/summary for metadata-only requests.
+
     Args:
         paper_uuid: UUID of the paper to retrieve
         db: Database session
-        
+
     Returns:
         dict: Complete paper JSON with pages, sections, figures, etc.
-        
+
     Raises:
         404: If paper not found or no processed content available
         500: If JSON parsing fails
@@ -438,18 +502,18 @@ def get_paper_json(paper_uuid: UUID, db: Session = Depends(get_session)):
         # Get the paper record from database with processed_content explicitly loaded
         from sqlalchemy.orm import undefer
         record = db.query(PaperRecord).options(undefer(PaperRecord.processed_content)).filter(PaperRecord.paper_uuid == str(paper_uuid)).first()
-        
+
         if not record:
             raise HTTPException(status_code=404, detail="Paper not found")
-        
+
         if not record.processed_content:
             raise HTTPException(status_code=404, detail="No processed content available for this paper")
-        
+
         # Parse and return the JSON directly
         import json
         paper_json = json.loads(record.processed_content)
         return paper_json
-        
+
     except HTTPException:
         raise
     except Exception as e:

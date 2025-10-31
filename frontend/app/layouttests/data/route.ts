@@ -34,15 +34,16 @@ export async function GET(request: Request) {
 
     // Extract UUID from filename
     const uuid = requestedFile.replace('.json', '');
-    
-    // Fetch paper from backend API
+
+    // Fetch paper summary from backend API (lightweight endpoint)
+    // Use /summary instead of /papers/{uuid} to avoid downloading 17MB of page images
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-    const response = await fetch(`${apiUrl}/papers/${uuid}`);
-    
+    const response = await fetch(`${apiUrl}/papers/${uuid}/summary`);
+
     if (!response.ok) {
       throw new Error(`Paper not found: ${response.status}`);
     }
-    
+
     const data = await response.json();
     return NextResponse.json(data, { status: 200 });
   } catch (error) {

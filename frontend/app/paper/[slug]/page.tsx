@@ -262,9 +262,9 @@ export default function LayoutTestsPage() {
           <>
             <div className="mb-4 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-md overflow-hidden p-3 sm:p-4">
               <div className="flex flex-col sm:flex-row items-start gap-3 sm:gap-4 max-w-full">
-                {(paperData as any)?.thumbnail_data_url && (
+                {(paperData as any)?.thumbnail_url && (
                   <img
-                    src={(paperData as any).thumbnail_data_url as string}
+                    src={(paperData as any).thumbnail_url as string}
                     alt="Paper thumbnail"
                     className="w-20 h-20 sm:w-24 sm:h-24 rounded-md object-cover flex-shrink-0 mx-auto sm:mx-0"
                   />
